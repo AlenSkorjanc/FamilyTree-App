@@ -7,6 +7,7 @@ import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.MethodArgumentNotValidException
 import org.springframework.web.bind.annotation.ExceptionHandler
 import org.springframework.web.bind.annotation.RestControllerAdvice
+import org.springframework.web.multipart.MaxUploadSizeExceededException
 
 @RestControllerAdvice
 class ApiExceptionHandler {
@@ -24,6 +25,10 @@ class ApiExceptionHandler {
         val fields = ex.bindingResult.fieldErrors.associate { it.field to (it.defaultMessage ?: "Invalid value") }
         return ResponseEntity.badRequest().body(ApiError(400, "VALIDATION_ERROR", "Request validation failed", request.requestURI, fieldErrors = fields))
     }
+
+    @ExceptionHandler(MaxUploadSizeExceededException::class)
+    fun uploadTooLarge(ex: MaxUploadSizeExceededException, request: HttpServletRequest) =
+        response(HttpStatus.PAYLOAD_TOO_LARGE, "FILE_TOO_LARGE", "Photo must be no larger than 5 MB", request)
 
     private fun response(status: HttpStatus, code: String, message: String?, request: HttpServletRequest) =
         ResponseEntity.status(status).body(ApiError(status.value(), code, message ?: status.reasonPhrase, request.requestURI))

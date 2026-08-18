@@ -65,6 +65,8 @@ data class PartnershipRequest(
     val partnershipType: PartnershipType = PartnershipType.PARTNERSHIP,
     val startDate: LocalDate? = null,
     val endDate: LocalDate? = null,
+    val copyChildrenFromPersonId: UUID? = null,
+    val sharedChildIds: Set<UUID>? = null,
 )
 
 data class PartnershipResponse(
@@ -84,6 +86,8 @@ data class GraphResponse(
     val parentChildRelationships: List<ParentChildResponse>,
     val partnerships: List<PartnershipResponse>,
 )
+
+data class PhotoUploadResponse(val photoUrl: String)
 
 data class ApiError(
     val status: Int,

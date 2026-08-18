@@ -18,7 +18,8 @@
 
 - Use strict TypeScript without `any` or error suppression.
 - Keep server state in TanStack Query and use React Hook Form where useful.
-- Render the graph with React Flow; never replace it with nested static HTML.
+- Render the graph with React Flow; never replace it with nested static HTML. Person nodes stay fixed after automatic layout, all partners stay horizontally aligned, and graph mutations trigger a fresh layout.
+- Keep all user-facing copy in the translation dictionaries and maintain both English and Slovenian.
 - Preserve create-new and link-existing workflows for relatives. Backend validation remains authoritative.
 
 ## Database migrations

@@ -35,7 +35,7 @@ npm run dev
 
 Open <http://localhost:5173>. Vite proxies `/api` to the backend at `http://localhost:8080`. Development CORS permits `http://localhost:5173`; override it with `CORS_ALLOWED_ORIGIN` when necessary.
 
-Local database defaults are `localhost:5432`, database `family_tree`, and user/password `family_tree`. Override them with `DB_URL`, `DB_USERNAME`, and `DB_PASSWORD`. Compose variables are documented in `.env.example`; production deployments should supply secrets externally.
+Local database defaults are `localhost:5432`, database `family_tree`, and user/password `family_tree`. Override them with `DB_URL`, `DB_USERNAME`, and `DB_PASSWORD`. Uploaded profile images are stored in `backend/data/photos` by default; set `PHOTO_STORAGE_PATH` to use another persistent location. Compose variables are documented in `.env.example`; production deployments should supply secrets externally.
 
 Stop the database with `docker compose down`. Add `-v` only if you intentionally want to remove the persisted local database volume.
 
@@ -65,7 +65,7 @@ npm run build
 
 The backend follows controller → service → repository layers. Controllers exchange immutable DTOs and never expose JPA entities. Transactional services enforce tree membership, self-link, duplicate, date, and ancestry-cycle rules. Centralized exception handling returns structured errors. Flyway owns the database schema; Hibernate only validates it.
 
-The frontend obtains a flat graph in one request, lays it out with ELK, and displays it as draggable React Flow nodes and edges. Search results center and select a node. The details panel derives relatives from edge records and supports editing, linking existing people, creating relatives, and removing links.
+The frontend obtains a flat graph in one request, lays it out with ELK, and displays it as fixed React Flow nodes and edges. All partners are grouped and aligned horizontally, and the layout is recalculated whenever graph data changes. Selecting a person exposes quick actions directly on their tree card for adding a parent, partner, or child; the relationship is preselected and relevant surname data is suggested. Person forms use a controlled gender selection, native whole-field date pickers, and validated profile-image upload. Search results center and select a node, and the interface supports English and Slovenian. The details panel derives relatives from edge records and supports editing, linking existing people, creating relatives, and removing links.
 
 ### Database model
 

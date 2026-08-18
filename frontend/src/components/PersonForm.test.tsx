@@ -13,4 +13,16 @@ describe('PersonForm', () => {
     await waitFor(() => expect(onSubmit).toHaveBeenCalled())
     expect(onSubmit.mock.calls[0][0]).toMatchObject({ firstName: 'Anna', lastName: null, birthDate: null })
   })
+
+  it('uses a gender dropdown, accepts image files, and opens the date picker from the field', () => {
+    render(<PersonForm onSubmit={vi.fn()} />)
+    expect(screen.getByRole('combobox', { name: 'Gender' })).toHaveTextContent('Male')
+    expect(screen.getByRole('combobox', { name: 'Gender' })).toHaveTextContent('Female')
+    const fileInput = screen.getByLabelText(/^Profile photo/)
+    expect(fileInput).toHaveAttribute('accept', expect.stringContaining('image/png'))
+    const birthDate = screen.getByLabelText('Birth date') as HTMLInputElement
+    birthDate.showPicker = vi.fn()
+    fireEvent.click(birthDate)
+    expect(birthDate.showPicker).toHaveBeenCalled()
+  })
 })
