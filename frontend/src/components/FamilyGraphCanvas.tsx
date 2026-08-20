@@ -160,6 +160,7 @@ function Canvas({ graph, readOnly = false, selectedPersonIds, edgeSelectionActiv
             person: occurrence.person,
             onAddRelative: (kind) => onAddRelative(occurrence.person.id, occurrence.id, kind),
             quickAddEnabled: !readOnly,
+            canAddParent: graph.parentChildRelationships.filter((relationship) => relationship.childId === occurrence.person.id).length < 2,
             isAlias: occurrence.isAlias,
             joinedPartnerLeft: joinedPartners.some((partnerPosition) => partnerPosition.x < (position?.x ?? 0) && partnerPosition.y === position?.y && Math.abs(partnerPosition.x - (position?.x ?? 0)) <= NODE_WIDTH + PARTNER_GAP + 1),
             joinedPartnerRight: joinedPartners.some((partnerPosition) => partnerPosition.x > (position?.x ?? 0) && partnerPosition.y === position?.y && Math.abs(partnerPosition.x - (position?.x ?? 0)) <= NODE_WIDTH + PARTNER_GAP + 1),

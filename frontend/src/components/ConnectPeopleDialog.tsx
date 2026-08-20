@@ -34,10 +34,14 @@ export function ConnectPeopleDialog({ graph, personIds, busy, error, onClose, on
     .filter((relationship) => relationship.parentId === parentId)
     .map((relationship) => graph.people.find((person) => person.id === relationship.childId))
     .filter((person) => person !== undefined)
+    .filter((person) => graph.parentChildRelationships.filter((relationship) => relationship.childId === person.id).length < 2)
   const [sharedChildIds, setSharedChildIds] = useState<UUID[]>(() => childrenFor(childSources[0] ?? '').map((child) => child.id))
 
   if (!first || !second) return null
   const names = { first: fullName(first), second: fullName(second) }
+  const parentCount = (childId: UUID) => graph.parentChildRelationships.filter((relationship) => relationship.childId === childId).length
+  const firstCanHaveParent = parentCount(first.id) < 2
+  const secondCanHaveParent = parentCount(second.id) < 2
   const submit = () => {
     if (choice === 'PARTNERS') {
       const selectedSharedChildIds = partnershipType === 'PARTNERSHIP' ? sharedChildIds : []
@@ -62,8 +66,8 @@ export function ConnectPeopleDialog({ graph, personIds, busy, error, onClose, on
       <label>{t('connection')}
         <select value={choice} onChange={(event) => setChoice(event.target.value as ConnectionChoice)}>
           <option value="PARTNERS">{t('partnersConnection', names)}</option>
-          <option value="FIRST_PARENT">{t('firstParentConnection', names)}</option>
-          <option value="SECOND_PARENT">{t('secondParentConnection', names)}</option>
+          <option value="FIRST_PARENT" disabled={!secondCanHaveParent}>{t('firstParentConnection', names)}{!secondCanHaveParent ? ` — ${t('parentLimitReached')}` : ''}</option>
+          <option value="SECOND_PARENT" disabled={!firstCanHaveParent}>{t('secondParentConnection', names)}{!firstCanHaveParent ? ` — ${t('parentLimitReached')}` : ''}</option>
         </select>
       </label>
       {choice === 'PARTNERS' && <label className="current-partner-checkbox"><input type="checkbox" checked={isCurrent} onChange={(event) => setCurrent(event.target.checked)} /><span>{t('setAsCurrentPartner')}</span></label>}

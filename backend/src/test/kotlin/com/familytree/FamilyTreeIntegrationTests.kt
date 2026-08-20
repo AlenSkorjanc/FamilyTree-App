@@ -118,6 +118,28 @@ class FamilyTreeIntegrationTests @Autowired constructor(
     }
 
     @Test
+    fun `a child can have at most two parents`() {
+        val tree = trees.create(CreateTreeRequest("Two parents"))
+        val firstParent = people.create(tree.id, PersonRequest("First parent"))
+        val secondParent = people.create(tree.id, PersonRequest("Second parent"))
+        val thirdParent = people.create(tree.id, PersonRequest("Third parent"))
+        val child = people.create(tree.id, PersonRequest("Child"))
+
+        relationships.createParentChild(tree.id, ParentChildRequest(firstParent.id, child.id))
+        val secondRelationship = relationships.createParentChild(tree.id, ParentChildRequest(secondParent.id, child.id))
+
+        val error = assertThrows<BusinessRuleException> {
+            relationships.createParentChild(tree.id, ParentChildRequest(thirdParent.id, child.id))
+        }
+        assertEquals("A child can have at most two parents", error.message)
+        assertEquals(2, relationships.listParentChild(tree.id).count { it.childId == child.id })
+
+        relationships.deleteParentChild(tree.id, secondRelationship.id)
+        relationships.createParentChild(tree.id, ParentChildRequest(thirdParent.id, child.id))
+        assertEquals(2, relationships.listParentChild(tree.id).count { it.childId == child.id })
+    }
+
+    @Test
     fun `creates partnership and prevents equivalent duplicate`() {
         val tree = trees.create(CreateTreeRequest("Test"))
         val one = people.create(tree.id, PersonRequest("One"))

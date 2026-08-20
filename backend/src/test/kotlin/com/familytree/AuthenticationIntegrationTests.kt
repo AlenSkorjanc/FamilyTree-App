@@ -142,7 +142,9 @@ class AuthenticationIntegrationTests @Autowired constructor(
         mockMvc.perform(get("/api/auth/me")).andExpect(status().isUnauthorized)
         mockMvc.perform(get("/api/auth/me").bearer(expiredToken(users.findByNormalizedEmail("jwt@example.com")!!.id)))
             .andExpect(status().isUnauthorized)
-        val tampered = token.dropLast(1) + if (token.last() == 'a') "b" else "a"
+        val tokenParts = token.split('.').toMutableList()
+        tokenParts[2] = (if (tokenParts[2].first() == 'a') "b" else "a") + tokenParts[2].drop(1)
+        val tampered = tokenParts.joinToString(".")
         mockMvc.perform(get("/api/auth/me").bearer(tampered)).andExpect(status().isUnauthorized)
     }
 

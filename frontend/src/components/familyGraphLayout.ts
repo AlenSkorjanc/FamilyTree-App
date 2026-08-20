@@ -8,6 +8,9 @@ export const PARTNERSHIP_ROUTE_OFFSET = 24
 export const PARTNERSHIP_ROUTE_LEVEL_GAP = 16
 const GROUP_GAP = 88
 const GENERATION_GAP = 110
+const DENSE_CONNECTION_THRESHOLD = 4
+const CONNECTION_GAP_STEP = 8
+const MAX_CONNECTION_GAP_EXTRA = 80
 
 export interface PersonAlias {
   id: string
@@ -274,16 +277,42 @@ export function arrangeFamilyTreePositions(
   })
 
   const result = new Map<string, { x: number; y: number }>()
-  rows.forEach((roots, row) => roots.forEach((root) => {
+  rows.forEach((roots) => roots.forEach((root) => {
     const group = orderedGroup(root)
     const left = (centers.get(root) ?? 0) - groupWidth(root) / 2
     let nextX = left
     group.forEach((id, index) => {
       if (index) nextX += gapBetween(root, group[index - 1], id)
-      result.set(id, { x: nextX, y: row * (NODE_HEIGHT + GENERATION_GAP) })
+      result.set(id, { x: nextX, y: 0 })
       nextX += NODE_WIDTH
     })
   }))
+
+  const generationY = new Map<number, number>()
+  let nextGenerationY = 0
+  rowNumbers.forEach((row, index) => {
+    generationY.set(row, nextGenerationY)
+    const nextRow = rowNumbers[index + 1]
+    if (nextRow === undefined) return
+    const crossingParentChildCount = parentChildEdges.filter(([parentId, childId]) =>
+      (rank.get(find(parentId)) ?? 0) === row && (rank.get(find(childId)) ?? 0) > row).length
+    const rowPartnerships = partnerships.filter((partnership) => (rank.get(find(partnership.person1Id)) ?? 0) === row)
+    const maximumRouteLevel = rowPartnerships.reduce((maximum, partnership) => {
+      const firstPosition = result.get(partnership.person1Id)
+      const secondPosition = result.get(partnership.person2Id)
+      if (!firstPosition || !secondPosition) return maximum
+      return Math.max(maximum, partnershipRouteLevel(Math.abs(firstPosition.x - secondPosition.x), true))
+    }, 0)
+    const connectionCount = crossingParentChildCount + rowPartnerships.length
+    const densityExtra = Math.min(MAX_CONNECTION_GAP_EXTRA, Math.max(0, connectionCount - DENSE_CONNECTION_THRESHOLD) * CONNECTION_GAP_STEP)
+    const routeExtra = maximumRouteLevel * PARTNERSHIP_ROUTE_LEVEL_GAP
+    const skippedGenerationSpace = Math.max(0, nextRow - row - 1) * (NODE_HEIGHT + GENERATION_GAP)
+    nextGenerationY += NODE_HEIGHT + GENERATION_GAP + Math.max(densityExtra, routeExtra) + skippedGenerationSpace
+  })
+  result.forEach((position, id) => {
+    const row = rank.get(find(id)) ?? 0
+    result.set(id, { x: position.x, y: generationY.get(row) ?? 0 })
+  })
   return result
 }
 

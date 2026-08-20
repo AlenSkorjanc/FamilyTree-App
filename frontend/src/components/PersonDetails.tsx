@@ -175,7 +175,7 @@ export function PersonDetails({ person, graph, editing = false, readOnly = false
           <DetailRow label={t('notes')} value={valueOrEmpty(person.notes)} long />
         </dl>
 
-        <RelativeSection title={t('parents')} addLabel={t('add')} onAdd={readOnly ? undefined : () => onAddRelative('parent')}>
+        <RelativeSection title={t('parents')} addLabel={t('add')} onAdd={readOnly || parents.length >= 2 ? undefined : () => onAddRelative('parent')}>
           {parents.map((relation) => relativeRow(byId.get(relation.parentId), relation.relationshipType, () => onRemoveParentChild(relation)))}
         </RelativeSection>
         <RelativeSection title={t('partners')} addLabel={t('add')} onAdd={readOnly ? undefined : () => onAddRelative('partner')}>

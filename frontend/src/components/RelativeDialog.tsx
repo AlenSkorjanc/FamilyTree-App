@@ -36,6 +36,7 @@ export function RelativeDialog({ kind, selectedId, graph, busy, error, onClose, 
     .filter((relationship) => relationship.parentId === parentId)
     .map((relationship) => graph.people.find((person) => person.id === relationship.childId))
     .filter((person) => person !== undefined)
+    .filter((person) => graph.parentChildRelationships.filter((relationship) => relationship.childId === person.id).length < 2)
   const possibleChildren = childrenFor(selectedId)
   const [sharedChildIds, setSharedChildIds] = useState<UUID[]>(possibleChildren.map((child) => child.id))
   const [sharedChildrenSourceId, setSharedChildrenSourceId] = useState<UUID>(selectedId)

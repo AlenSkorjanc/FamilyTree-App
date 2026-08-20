@@ -29,13 +29,16 @@ class RelationshipService(
         treeService.requireTree(treeId)
         if (request.parentId == request.childId) throw BusinessRuleException("A person cannot be their own parent")
         personService.requirePerson(treeId, request.parentId)
-        personService.requirePerson(treeId, request.childId)
+        personService.requirePersonForUpdate(treeId, request.childId)
         val (firstPartner, secondPartner) = canonicalPair(request.parentId, request.childId)
         if (partnerships.existsByTreeIdAndPerson1IdAndPerson2Id(treeId, firstPartner, secondPartner)) {
             throw BusinessRuleException("Partners cannot also have a parent-child relationship with each other")
         }
         if (parentChildren.existsByTreeIdAndParentIdAndChildId(treeId, request.parentId, request.childId)) {
             throw ConflictException("This parent-child relationship already exists")
+        }
+        if (parentChildren.countByTreeIdAndChildId(treeId, request.childId) >= 2) {
+            throw BusinessRuleException("A child can have at most two parents")
         }
         if (hasDescendant(treeId, request.childId, request.parentId)) {
             throw BusinessRuleException("This relationship would create an ancestry cycle")

@@ -9,6 +9,7 @@ export type PersonNodeData = {
   onAddRelative?: (kind: RelativeKind) => void
   isAlias?: boolean
   quickAddEnabled?: boolean
+  canAddParent?: boolean
   joinedPartnerLeft?: boolean
   joinedPartnerRight?: boolean
 }
@@ -50,7 +51,7 @@ export function PersonNode({ data, selected }: NodeProps<PersonFlowNode>) {
         <small>{lifeYears(data.person, bornLabel, language)}</small>
       </div>
       {!data.isAlias && data.onAddRelative && data.quickAddEnabled !== false && <div className="node-quick-add nodrag nowheel">
-        {(['parent', 'partner', 'child'] as const).map((kind) => (
+        {(['parent', 'partner', 'child'] as const).filter((kind) => kind !== 'parent' || data.canAddParent !== false).map((kind) => (
           <button key={kind} aria-label={t('quickAddRelative', { kind: t(kind) })} onClick={(event) => { event.stopPropagation(); data.onAddRelative?.(kind) }}>
             {t(kind === 'parent' ? 'quickParent' : kind === 'partner' ? 'quickPartner' : 'quickChild')}
           </button>
