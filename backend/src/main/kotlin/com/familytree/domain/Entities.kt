@@ -12,14 +12,74 @@ import java.util.UUID
 
 enum class RelationshipType { BIOLOGICAL, ADOPTIVE, STEP, OTHER }
 enum class PartnershipType { MARRIAGE, PARTNERSHIP, OTHER }
+enum class IdentityProvider { GOOGLE, FACEBOOK }
+enum class TreeVisibility { PRIVATE, RESTRICTED, PUBLIC }
 
 @Entity
 @Table(name = "family_trees")
 class FamilyTree(
     @Id var id: UUID = UUID.randomUUID(),
+    @Column(name = "owner_user_id") var ownerUserId: UUID? = null,
+    @Column(name = "guest_owner_id") var guestOwnerId: UUID? = null,
     @Column(nullable = false, length = 200) var name: String = "",
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false, length = 20) var visibility: TreeVisibility = TreeVisibility.PRIVATE,
+    @Column(name = "public_share_id", unique = true) var publicShareId: UUID? = null,
     @Column(name = "created_at", nullable = false) var createdAt: Instant = Instant.now(),
     @Column(name = "updated_at", nullable = false) var updatedAt: Instant = Instant.now(),
+)
+
+@Entity
+@Table(name = "family_tree_user_access")
+class FamilyTreeUserAccess(
+    @Id var id: UUID = UUID.randomUUID(),
+    @Column(name = "tree_id", nullable = false) var treeId: UUID = UUID.randomUUID(),
+    @Column(name = "user_id", nullable = false) var userId: UUID = UUID.randomUUID(),
+    @Column(name = "created_at", nullable = false) var createdAt: Instant = Instant.now(),
+)
+
+@Entity
+@Table(name = "app_user")
+class AppUser(
+    @Id var id: UUID = UUID.randomUUID(),
+    @Column(nullable = false, length = 320) var email: String = "",
+    @Column(name = "normalized_email", nullable = false, length = 320, unique = true) var normalizedEmail: String = "",
+    @Column(name = "password_hash", length = 255) var passwordHash: String? = null,
+    @Column(name = "first_name", length = 120) var firstName: String? = null,
+    @Column(name = "last_name", length = 120) var lastName: String? = null,
+    @Column(name = "display_name", length = 250) var displayName: String? = null,
+    @Column(name = "profile_picture_url", length = 2000) var profilePictureUrl: String? = null,
+    @Column(nullable = false) var enabled: Boolean = true,
+    @Column(name = "created_at", nullable = false) var createdAt: Instant = Instant.now(),
+    @Column(name = "updated_at", nullable = false) var updatedAt: Instant = Instant.now(),
+)
+
+@Entity
+@Table(name = "user_identity")
+class UserIdentity(
+    @Id var id: UUID = UUID.randomUUID(),
+    @Column(name = "user_id", nullable = false) var userId: UUID = UUID.randomUUID(),
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false, length = 30) var provider: IdentityProvider = IdentityProvider.GOOGLE,
+    @Column(name = "provider_user_id", nullable = false, length = 255) var providerUserId: String = "",
+    @Column(name = "provider_email", length = 320) var providerEmail: String? = null,
+    @Column(name = "created_at", nullable = false) var createdAt: Instant = Instant.now(),
+    @Column(name = "updated_at", nullable = false) var updatedAt: Instant = Instant.now(),
+)
+
+@Entity
+@Table(name = "refresh_token")
+class RefreshToken(
+    @Id var id: UUID = UUID.randomUUID(),
+    @Column(name = "user_id", nullable = false) var userId: UUID = UUID.randomUUID(),
+    @Column(name = "token_hash", nullable = false, length = 64, unique = true) var tokenHash: String = "",
+    @Column(name = "family_id", nullable = false) var familyId: UUID = UUID.randomUUID(),
+    @Column(name = "created_at", nullable = false) var createdAt: Instant = Instant.now(),
+    @Column(name = "expires_at", nullable = false) var expiresAt: Instant = Instant.now(),
+    @Column(name = "revoked_at") var revokedAt: Instant? = null,
+    @Column(name = "replaced_by_token_id") var replacedByTokenId: UUID? = null,
+    @Column(name = "user_agent", length = 500) var userAgent: String? = null,
+    @Column(name = "ip_address", length = 64) var ipAddress: String? = null,
 )
 
 @Entity
@@ -67,5 +127,6 @@ class Partnership(
     var partnershipType: PartnershipType = PartnershipType.PARTNERSHIP,
     @Column(name = "start_date") var startDate: LocalDate? = null,
     @Column(name = "end_date") var endDate: LocalDate? = null,
+    @Column(name = "is_current", nullable = false) var isCurrent: Boolean = false,
     @Column(name = "created_at", nullable = false) var createdAt: Instant = Instant.now(),
 )

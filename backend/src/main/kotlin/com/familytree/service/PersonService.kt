@@ -30,13 +30,13 @@ class PersonService(
 
     @Transactional(readOnly = true)
     fun list(treeId: UUID, search: String?): List<PersonResponse> {
-        treeService.requireTree(treeId)
+        treeService.requireReadableTree(treeId)
         val matches = if (search.isNullOrBlank()) people.findByTreeIdOrderByFirstNameAscLastNameAsc(treeId) else people.search(treeId, search.trim())
         return matches.map { it.toResponse() }
     }
 
     @Transactional(readOnly = true)
-    fun get(treeId: UUID, personId: UUID): PersonResponse = requirePerson(treeId, personId).toResponse()
+    fun get(treeId: UUID, personId: UUID): PersonResponse = requireReadablePerson(treeId, personId).toResponse()
 
     @Transactional
     fun update(treeId: UUID, personId: UUID, request: PersonRequest): PersonResponse {
@@ -54,8 +54,20 @@ class PersonService(
         people.delete(person)
     }
 
-    fun requirePerson(treeId: UUID, personId: UUID): Person = people.findByIdAndTreeId(personId, treeId)
-        ?: throw NotFoundException("Person $personId was not found in tree $treeId")
+    fun requirePerson(treeId: UUID, personId: UUID): Person {
+        treeService.requireTree(treeId)
+        return people.findByIdAndTreeId(personId, treeId)
+            ?: throw NotFoundException("Person $personId was not found in tree $treeId")
+    }
+
+    fun requirePersonForUpdate(treeId: UUID, personId: UUID): Person = people.findByIdAndTreeIdForUpdate(personId, treeId)
+        ?: throw NotFoundException("Person $personId was not found in family tree $treeId")
+
+    private fun requireReadablePerson(treeId: UUID, personId: UUID): Person {
+        treeService.requireReadableTree(treeId)
+        return people.findByIdAndTreeId(personId, treeId)
+            ?: throw NotFoundException("Person $personId was not found in tree $treeId")
+    }
 
     private fun validateDates(request: PersonRequest) {
         if (request.birthDate != null && request.deathDate != null && request.deathDate.isBefore(request.birthDate)) {

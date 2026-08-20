@@ -18,12 +18,20 @@ class GraphService(
 ) {
     @Transactional(readOnly = true)
     fun get(treeId: UUID): GraphResponse {
-        val tree = treeService.requireTree(treeId)
+        val accessible = treeService.requireReadableTree(treeId)
+        return graph(accessible)
+    }
+
+    @Transactional(readOnly = true)
+    fun getPublic(publicShareId: UUID): GraphResponse = graph(treeService.requirePublicTree(publicShareId))
+
+    private fun graph(accessible: AccessibleTree): GraphResponse {
+        val tree = accessible.tree
         return GraphResponse(
-            tree.toResponse(),
-            people.findByTreeIdOrderByFirstNameAscLastNameAsc(treeId).map { it.toResponse() },
-            parentChildren.findByTreeId(treeId).map { it.toResponse() },
-            partnerships.findByTreeId(treeId).map { it.toResponse() },
+            tree.toResponse(accessible.access),
+            people.findByTreeIdOrderByFirstNameAscLastNameAsc(tree.id).map { it.toResponse() },
+            parentChildren.findByTreeId(tree.id).map { it.toResponse() },
+            partnerships.findByTreeId(tree.id).map { it.toResponse() },
         )
     }
 }

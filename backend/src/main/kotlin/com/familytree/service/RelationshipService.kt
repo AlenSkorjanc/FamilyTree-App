@@ -6,6 +6,7 @@ import com.familytree.dto.ParentChildRequest
 import com.familytree.dto.ParentChildResponse
 import com.familytree.dto.PartnershipRequest
 import com.familytree.dto.PartnershipResponse
+import com.familytree.dto.CurrentPartnerRequest
 import com.familytree.exception.BusinessRuleException
 import com.familytree.exception.ConflictException
 import com.familytree.exception.NotFoundException
@@ -46,14 +47,15 @@ class RelationshipService(
 
     @Transactional(readOnly = true)
     fun listParentChild(treeId: UUID, personId: UUID? = null): List<ParentChildResponse> {
-        treeService.requireTree(treeId)
-        if (personId != null) personService.requirePerson(treeId, personId)
+        treeService.requireReadableTree(treeId)
+        if (personId != null) personService.get(treeId, personId)
         val matches = if (personId == null) parentChildren.findByTreeId(treeId) else parentChildren.findForPerson(treeId, personId)
         return matches.map { it.toResponse() }
     }
 
     @Transactional
     fun deleteParentChild(treeId: UUID, relationshipId: UUID) {
+        treeService.requireTree(treeId)
         val relationship = parentChildren.findByIdAndTreeId(relationshipId, treeId)
             ?: throw NotFoundException("Parent-child relationship $relationshipId was not found")
         parentChildren.delete(relationship)
@@ -78,8 +80,17 @@ class RelationshipService(
         if (partnerships.existsByTreeIdAndPerson1IdAndPerson2Id(treeId, first, second)) {
             throw ConflictException("A partnership between these people already exists")
         }
+        if (request.isCurrent) prepareCurrentPartnership(treeId, first, second)
         val partnership = partnerships.save(
-            Partnership(treeId = treeId, person1Id = first, person2Id = second, partnershipType = request.partnershipType, startDate = request.startDate, endDate = request.endDate),
+            Partnership(
+                treeId = treeId,
+                person1Id = first,
+                person2Id = second,
+                partnershipType = request.partnershipType,
+                startDate = request.startDate,
+                endDate = request.endDate,
+                isCurrent = request.isCurrent,
+            ),
         )
         request.copyChildrenFromPersonId?.let { sourceParentId ->
             if (sourceParentId != request.person1Id && sourceParentId != request.person2Id) {
@@ -107,6 +118,7 @@ class RelationshipService(
 
     @Transactional
     fun updatePartnership(treeId: UUID, partnershipId: UUID, request: PartnershipRequest): PartnershipResponse {
+        treeService.requireTree(treeId)
         val current = partnerships.findByIdAndTreeId(partnershipId, treeId)
             ?: throw NotFoundException("Partnership $partnershipId was not found")
         if (request.person1Id == request.person2Id) throw BusinessRuleException("A person cannot be partnered with themselves")
@@ -128,30 +140,60 @@ class RelationshipService(
         if ((first != current.person1Id || second != current.person2Id) && partnerships.existsByTreeIdAndPerson1IdAndPerson2Id(treeId, first, second)) {
             throw ConflictException("A partnership between these people already exists")
         }
+        if (request.isCurrent) prepareCurrentPartnership(treeId, first, second, current.id)
         current.person1Id = first
         current.person2Id = second
         current.partnershipType = request.partnershipType
         current.startDate = request.startDate
         current.endDate = request.endDate
+        current.isCurrent = request.isCurrent
         return partnerships.save(current).toResponse()
+    }
+
+    @Transactional
+    fun setCurrentPartner(treeId: UUID, personId: UUID, request: CurrentPartnerRequest): List<PartnershipResponse> {
+        treeService.requireTree(treeId)
+        val personIds = setOfNotNull(personId, request.partnerId)
+        lockPeople(treeId, personIds)
+        val selected = request.partnerId?.let { partnerId ->
+            val (first, second) = canonicalPair(personId, partnerId)
+            partnerships.findByTreeIdAndPerson1IdAndPerson2Id(treeId, first, second)
+                ?: throw BusinessRuleException("The selected person is not a partner of this person")
+        }
+        val affected = partnerships.findForPeopleForUpdate(treeId, personIds)
+        affected.forEach { it.isCurrent = it.id == selected?.id }
+        partnerships.saveAll(affected)
+        return partnerships.findForPerson(treeId, personId).map { it.toResponse() }
     }
 
     @Transactional(readOnly = true)
     fun listPartnerships(treeId: UUID, personId: UUID? = null): List<PartnershipResponse> {
-        treeService.requireTree(treeId)
-        if (personId != null) personService.requirePerson(treeId, personId)
+        treeService.requireReadableTree(treeId)
+        if (personId != null) personService.get(treeId, personId)
         val matches = if (personId == null) partnerships.findByTreeId(treeId) else partnerships.findForPerson(treeId, personId)
         return matches.map { it.toResponse() }
     }
 
     @Transactional
     fun deletePartnership(treeId: UUID, partnershipId: UUID) {
+        treeService.requireTree(treeId)
         val partnership = partnerships.findByIdAndTreeId(partnershipId, treeId)
             ?: throw NotFoundException("Partnership $partnershipId was not found")
         partnerships.delete(partnership)
     }
 
     private fun canonicalPair(a: UUID, b: UUID) = if (a.toString() < b.toString()) a to b else b to a
+
+    private fun prepareCurrentPartnership(treeId: UUID, first: UUID, second: UUID, selectedId: UUID? = null) {
+        lockPeople(treeId, setOf(first, second))
+        partnerships.findForPeopleForUpdate(treeId, setOf(first, second)).forEach { partnership ->
+            if (partnership.id != selectedId) partnership.isCurrent = false
+        }
+    }
+
+    private fun lockPeople(treeId: UUID, personIds: Collection<UUID>) {
+        personIds.sortedBy(UUID::toString).forEach { personService.requirePersonForUpdate(treeId, it) }
+    }
 
     private fun hasAncestryRelationship(treeId: UUID, first: UUID, second: UUID) =
         hasDescendant(treeId, first, second) || hasDescendant(treeId, second, first)

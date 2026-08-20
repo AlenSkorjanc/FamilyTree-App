@@ -4,6 +4,7 @@ import com.familytree.dto.ParentChildRequest
 import com.familytree.dto.ParentChildResponse
 import com.familytree.dto.PartnershipRequest
 import com.familytree.dto.PartnershipResponse
+import com.familytree.dto.CurrentPartnerRequest
 import com.familytree.service.RelationshipService
 import org.springframework.http.HttpStatus
 import org.springframework.web.bind.annotation.DeleteMapping
@@ -42,6 +43,13 @@ class RelationshipController(private val service: RelationshipService) {
     @PatchMapping("/partnerships/{partnershipId}")
     fun updatePartnership(@PathVariable treeId: UUID, @PathVariable partnershipId: UUID, @RequestBody request: PartnershipRequest): PartnershipResponse =
         service.updatePartnership(treeId, partnershipId, request)
+
+    @PatchMapping("/people/{personId}/current-partner")
+    fun setCurrentPartner(
+        @PathVariable treeId: UUID,
+        @PathVariable personId: UUID,
+        @RequestBody request: CurrentPartnerRequest,
+    ): List<PartnershipResponse> = service.setCurrentPartner(treeId, personId, request)
 
     @DeleteMapping("/partnerships/{partnershipId}")
     @ResponseStatus(HttpStatus.NO_CONTENT)

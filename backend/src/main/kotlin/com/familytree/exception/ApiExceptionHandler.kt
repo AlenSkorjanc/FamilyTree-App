@@ -20,6 +20,13 @@ class ApiExceptionHandler {
     @ExceptionHandler(BusinessRuleException::class)
     fun invalid(ex: BusinessRuleException, request: HttpServletRequest) = response(HttpStatus.UNPROCESSABLE_ENTITY, "BUSINESS_RULE", ex.message, request)
 
+    @ExceptionHandler(AuthenticationFailedException::class, AuthenticationRequiredException::class)
+    fun unauthorized(ex: RuntimeException, request: HttpServletRequest) = response(HttpStatus.UNAUTHORIZED, "UNAUTHORIZED", ex.message, request)
+
+    @ExceptionHandler(AccountLinkRequiredException::class)
+    fun accountLinkRequired(ex: AccountLinkRequiredException, request: HttpServletRequest) =
+        response(HttpStatus.CONFLICT, "ACCOUNT_LINK_REQUIRED", ex.message, request)
+
     @ExceptionHandler(MethodArgumentNotValidException::class)
     fun validation(ex: MethodArgumentNotValidException, request: HttpServletRequest): ResponseEntity<ApiError> {
         val fields = ex.bindingResult.fieldErrors.associate { it.field to (it.defaultMessage ?: "Invalid value") }

@@ -15,8 +15,8 @@ interface Props {
   busy?: boolean
   error?: string | null
   onClose: () => void
-  onLink: (personId: UUID, type: RelationshipType | PartnershipType, secondParentId?: UUID, sharedChildIds?: UUID[], sharedChildrenSourceId?: UUID) => void
-  onCreate: (input: PersonInput, type: RelationshipType | PartnershipType, photoFile?: File, secondParentId?: UUID, sharedChildIds?: UUID[]) => void
+  onLink: (personId: UUID, type: RelationshipType | PartnershipType, secondParentId?: UUID, sharedChildIds?: UUID[], sharedChildrenSourceId?: UUID, isCurrent?: boolean) => void
+  onCreate: (input: PersonInput, type: RelationshipType | PartnershipType, photoFile?: File, secondParentId?: UUID, sharedChildIds?: UUID[], isCurrent?: boolean) => void
 }
 
 export function RelativeDialog({ kind, selectedId, graph, busy, error, onClose, onLink, onCreate }: Props) {
@@ -30,6 +30,7 @@ export function RelativeDialog({ kind, selectedId, graph, busy, error, onClose, 
   const [query, setQuery] = useState('')
   const [candidateId, setCandidateId] = useState('')
   const [type, setType] = useState<RelationshipType | PartnershipType>(kind === 'partner' ? 'PARTNERSHIP' : 'BIOLOGICAL')
+  const [isCurrent, setCurrent] = useState(false)
   const [secondParentId, setSecondParentId] = useState<UUID>(secondParentOptions.length === 1 ? secondParentOptions[0].id : '')
   const childrenFor = (parentId: UUID) => graph.parentChildRelationships
     .filter((relationship) => relationship.parentId === parentId)
@@ -41,6 +42,7 @@ export function RelativeDialog({ kind, selectedId, graph, busy, error, onClose, 
   const kindLabel = t(kind)
   const title = t('addRelative', { kind: kindLabel })
   const suggestedLastName = kind === 'parent' ? selectedPerson?.maidenName ?? selectedPerson?.lastName : kind === 'child' ? selectedPerson?.lastName : null
+  const birthDatePickerAnchor = suggestedRelativeBirthDate(kind, selectedPerson?.birthDate)
   const candidates = useMemo(() => {
     const childrenOf = (id: UUID) => graph.parentChildRelationships.filter((r) => r.parentId === id).map((r) => r.childId)
     const descendants = (id: UUID) => {
@@ -82,6 +84,7 @@ export function RelativeDialog({ kind, selectedId, graph, busy, error, onClose, 
           {kind === 'partner' ? <><option value="PARTNERSHIP">{t('partnership')}</option><option value="MARRIAGE">{t('marriage')}</option><option value="OTHER">{t('other')}</option></> : <><option value="BIOLOGICAL">{t('biological')}</option><option value="ADOPTIVE">{t('adoptive')}</option><option value="STEP">{t('step')}</option><option value="OTHER">{t('other')}</option></>}
         </select>
       </label>
+      {kind === 'partner' && <label className="current-partner-checkbox"><input type="checkbox" checked={isCurrent} onChange={(event) => setCurrent(event.target.checked)} /><span>{t('setAsCurrentPartner')}</span></label>}
       {kind === 'child' && secondParentOptions.length > 0 && <label className="relationship-type">{t('secondParent')}
         <select value={secondParentId} onChange={(event) => setSecondParentId(event.target.value)}>
           <option value="">{t('noSecondParent')}</option>
@@ -94,7 +97,7 @@ export function RelativeDialog({ kind, selectedId, graph, busy, error, onClose, 
           {kind === 'partner' && type === 'PARTNERSHIP' && possibleChildren.length > 0 && <SharedChildrenPicker
             children={possibleChildren} selectedIds={sharedChildIds} onChange={setSharedChildIds}
           />}
-          <PersonForm initialValues={{ lastName: suggestedLastName }} submitLabel={t('createAndAdd', { kind: kindLabel })} busy={busy} error={error} onSubmit={(input, photoFile) => onCreate(input, type, photoFile, secondParentId || undefined, kind === 'partner' && type === 'PARTNERSHIP' ? sharedChildIds : undefined)} />
+          <PersonForm initialValues={{ lastName: suggestedLastName }} birthDatePickerAnchor={birthDatePickerAnchor} submitLabel={t('createAndAdd', { kind: kindLabel })} busy={busy} error={error} onSubmit={(input, photoFile) => onCreate(input, type, photoFile, secondParentId || undefined, kind === 'partner' && type === 'PARTNERSHIP' ? sharedChildIds : undefined, isCurrent)} />
         </>
       ) : (
         <div className="link-person-form">
@@ -124,11 +127,27 @@ export function RelativeDialog({ kind, selectedId, graph, busy, error, onClose, 
             candidateId, type, secondParentId || undefined,
             kind === 'partner' && type === 'PARTNERSHIP' ? sharedChildIds : undefined,
             kind === 'partner' && type === 'PARTNERSHIP' && sharedChildIds.length ? sharedChildrenSourceId : undefined,
+            isCurrent,
           )}>{busy ? t('linking') : t('linkPerson')}</button></footer>
         </div>
       )}
     </Modal>
   )
+}
+
+export function suggestedRelativeBirthDate(kind: RelativeKind, selectedBirthDate: string | null | undefined, today = new Date()): string | undefined {
+  if (kind === 'partner') return undefined
+  const selectedDate = selectedBirthDate ? parseIsoDate(selectedBirthDate) : null
+  const suggested = selectedDate ?? new Date(Date.UTC(today.getFullYear(), today.getMonth(), today.getDate()))
+  suggested.setUTCFullYear(suggested.getUTCFullYear() + (kind === 'parent' ? -25 : selectedDate ? 25 : 0))
+  const todayUtc = new Date(Date.UTC(today.getFullYear(), today.getMonth(), today.getDate()))
+  const result = suggested > todayUtc ? todayUtc : suggested
+  return `${result.getUTCFullYear()}-${String(result.getUTCMonth() + 1).padStart(2, '0')}-${String(result.getUTCDate()).padStart(2, '0')}`
+}
+
+function parseIsoDate(value: string) {
+  const [year, month, day] = value.split('-').map(Number)
+  return new Date(Date.UTC(year, month - 1, day))
 }
 
 export function SharedChildrenPicker({ children, selectedIds, onChange }: { children: Person[]; selectedIds: UUID[]; onChange: (ids: UUID[]) => void }) {

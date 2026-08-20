@@ -1,19 +1,5 @@
-import type { ApiError, FamilyGraph, FamilyTree, ParentChildRelationship, Partnership, PartnershipType, Person, PersonInput, RelationshipType, UUID } from './types'
-
-const baseUrl = import.meta.env.VITE_API_URL ?? ''
-
-async function request<T>(path: string, options?: RequestInit): Promise<T> {
-  const response = await fetch(`${baseUrl}${path}`, {
-    ...options,
-    headers: { 'Content-Type': 'application/json', ...options?.headers },
-  })
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({ message: response.statusText })) as ApiError
-    throw new Error(error.message || 'Request failed')
-  }
-  if (response.status === 204) return undefined as T
-  return response.json() as Promise<T>
-}
+import type { FamilyGraph, FamilyTree, ParentChildRelationship, Partnership, PartnershipType, Person, PersonInput, RelationshipType, TreeSharing, TreeVisibility, UUID } from './types'
+import { apiBaseUrl, authenticatedRequest as request, publicRequest } from './authClient'
 
 export const api = {
   listTrees: () => request<FamilyTree[]>('/api/trees'),
@@ -28,24 +14,76 @@ export const api = {
   uploadPhoto: async (treeId: UUID, file: File) => {
     const body = new FormData()
     body.append('file', file)
-    const response = await fetch(`${baseUrl}/api/trees/${treeId}/photos`, { method: 'POST', body })
-    if (!response.ok) {
-      const error = await response.json().catch(() => ({ message: response.statusText })) as ApiError
-      throw new Error(error.message || 'Photo upload failed')
-    }
-    return response.json() as Promise<{ photoUrl: string }>
+    return request<{ photoUrl: string }>(`/api/trees/${treeId}/photos`, { method: 'POST', body })
   },
   createParentChild: (treeId: UUID, parentId: UUID, childId: UUID, relationshipType: RelationshipType) =>
     request<ParentChildRelationship>(`/api/trees/${treeId}/parent-child-relationships`, { method: 'POST', body: JSON.stringify({ parentId, childId, relationshipType }) }),
   deleteParentChild: (treeId: UUID, relationshipId: UUID) => request<void>(`/api/trees/${treeId}/parent-child-relationships/${relationshipId}`, { method: 'DELETE' }),
-  createPartnership: (treeId: UUID, person1Id: UUID, person2Id: UUID, partnershipType: PartnershipType, copyChildrenFromPersonId?: UUID, sharedChildIds?: UUID[]) =>
-    request<Partnership>(`/api/trees/${treeId}/partnerships`, { method: 'POST', body: JSON.stringify({ person1Id, person2Id, partnershipType, copyChildrenFromPersonId, sharedChildIds }) }),
+  createPartnership: (treeId: UUID, person1Id: UUID, person2Id: UUID, partnershipType: PartnershipType, copyChildrenFromPersonId?: UUID, sharedChildIds?: UUID[], isCurrent = false) =>
+    request<Partnership>(`/api/trees/${treeId}/partnerships`, { method: 'POST', body: JSON.stringify({ person1Id, person2Id, partnershipType, copyChildrenFromPersonId, sharedChildIds, isCurrent }) }),
+  updatePartnership: (treeId: UUID, partnership: Partnership, partnershipType: PartnershipType) =>
+    request<Partnership>(`/api/trees/${treeId}/partnerships/${partnership.id}`, {
+      method: 'PATCH',
+      body: JSON.stringify({
+        person1Id: partnership.person1Id,
+        person2Id: partnership.person2Id,
+        partnershipType,
+        startDate: partnership.startDate,
+        endDate: partnership.endDate,
+        isCurrent: partnership.isCurrent,
+      }),
+    }),
+  setCurrentPartner: (treeId: UUID, personId: UUID, partnerId: UUID | null) =>
+    request<Partnership[]>(`/api/trees/${treeId}/people/${personId}/current-partner`, { method: 'PATCH', body: JSON.stringify({ partnerId }) }),
   deletePartnership: (treeId: UUID, partnershipId: UUID) => request<void>(`/api/trees/${treeId}/partnerships/${partnershipId}`, { method: 'DELETE' }),
+  previewGuestTrees: (treeIds: UUID[]) => request<FamilyTree[]>('/api/trees/claim-preview', { method: 'POST', body: JSON.stringify({ treeIds }) }),
+  claimGuestTrees: (treeIds: UUID[]) => request<FamilyTree[]>('/api/trees/claim', { method: 'POST', body: JSON.stringify({ treeIds }) }),
+  getSharing: (treeId: UUID) => request<TreeSharing>(`/api/trees/${treeId}/sharing`),
+  updateSharing: (treeId: UUID, visibility: TreeVisibility, sharedWithEmails: string[]) => request<TreeSharing>(`/api/trees/${treeId}/sharing`, { method: 'PUT', body: JSON.stringify({ visibility, sharedWithEmails }) }),
+}
+
+const GUEST_TREE_IDS_KEY = 'family-tree-guest-tree-ids'
+
+export function guestTreeIds(): UUID[] {
+  try {
+    const value = JSON.parse(localStorage.getItem(GUEST_TREE_IDS_KEY) ?? '[]') as unknown
+    return Array.isArray(value) ? value.filter((id): id is UUID => typeof id === 'string') : []
+  } catch { return [] }
+}
+
+export function removeGuestTreeIds(ids: UUID[]) {
+  const removed = new Set(ids)
+  localStorage.setItem(GUEST_TREE_IDS_KEY, JSON.stringify(guestTreeIds().filter((id) => !removed.has(id))))
+}
+
+function rememberGuestTree(id: UUID) {
+  localStorage.setItem(GUEST_TREE_IDS_KEY, JSON.stringify([...new Set([...guestTreeIds(), id])]))
+}
+
+export const guestApi: typeof api = {
+  ...api,
+  listTrees: async () => {
+    const ids = new Set(guestTreeIds())
+    return (await api.listTrees()).filter((tree) => ids.has(tree.id))
+  },
+  createTree: async (name) => {
+    const tree = await api.createTree(name)
+    rememberGuestTree(tree.id)
+    return tree
+  },
+  deleteTree: async (treeId) => {
+    await api.deleteTree(treeId)
+    removeGuestTreeIds([treeId])
+  },
+}
+
+export const publicApi = {
+  graph: (publicShareId: UUID) => publicRequest<FamilyGraph>(`/api/public/trees/${publicShareId}/graph`),
 }
 
 export function resolvePhotoUrl(photoUrl: string): string {
   if (/^(https?:|data:|blob:)/.test(photoUrl)) return photoUrl
-  return `${baseUrl}${photoUrl}`
+  return `${apiBaseUrl}${photoUrl}`
 }
 
 export function fullName(person: Person): string {

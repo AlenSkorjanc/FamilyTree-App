@@ -2,6 +2,8 @@ package com.familytree.dto
 
 import com.familytree.domain.PartnershipType
 import com.familytree.domain.RelationshipType
+import com.familytree.domain.TreeVisibility
+import jakarta.validation.constraints.Email
 import jakarta.validation.constraints.NotBlank
 import jakarta.validation.constraints.Size
 import java.time.Instant
@@ -10,7 +12,30 @@ import java.util.UUID
 
 data class CreateTreeRequest(@field:NotBlank @field:Size(max = 200) val name: String)
 data class UpdateTreeRequest(@field:NotBlank @field:Size(max = 200) val name: String)
-data class TreeResponse(val id: UUID, val name: String, val createdAt: Instant, val updatedAt: Instant)
+enum class TreeAccess { OWNER, VIEWER, GUEST_OWNER }
+data class TreeResponse(
+    val id: UUID,
+    val name: String,
+    val createdAt: Instant,
+    val updatedAt: Instant,
+    val access: TreeAccess,
+    val visibility: TreeVisibility,
+    val publicShareId: UUID?,
+)
+
+data class ClaimGuestTreesRequest(@field:Size(max = 100) val treeIds: Set<UUID>)
+
+data class TreeSharingRequest(
+    val visibility: TreeVisibility,
+    @field:Size(max = 100) val sharedWithEmails: Set<@Email @Size(max = 320) String> = emptySet(),
+)
+
+data class TreeMemberResponse(val userId: UUID, val email: String, val displayName: String?)
+data class TreeSharingResponse(
+    val visibility: TreeVisibility,
+    val publicShareId: UUID?,
+    val members: List<TreeMemberResponse>,
+)
 
 data class PersonRequest(
     @field:NotBlank @field:Size(max = 120) val firstName: String,
@@ -65,6 +90,7 @@ data class PartnershipRequest(
     val partnershipType: PartnershipType = PartnershipType.PARTNERSHIP,
     val startDate: LocalDate? = null,
     val endDate: LocalDate? = null,
+    val isCurrent: Boolean = false,
     val copyChildrenFromPersonId: UUID? = null,
     val sharedChildIds: Set<UUID>? = null,
 )
@@ -77,8 +103,11 @@ data class PartnershipResponse(
     val partnershipType: PartnershipType,
     val startDate: LocalDate?,
     val endDate: LocalDate?,
+    val isCurrent: Boolean,
     val createdAt: Instant,
 )
+
+data class CurrentPartnerRequest(val partnerId: UUID?)
 
 data class GraphResponse(
     val tree: TreeResponse,

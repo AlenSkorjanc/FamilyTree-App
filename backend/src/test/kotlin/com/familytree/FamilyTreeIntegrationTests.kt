@@ -1,7 +1,9 @@
 package com.familytree
 
 import com.familytree.domain.PartnershipType
+import com.familytree.domain.AppUser
 import com.familytree.dto.CreateTreeRequest
+import com.familytree.dto.CurrentPartnerRequest
 import com.familytree.dto.ParentChildRequest
 import com.familytree.dto.PartnershipRequest
 import com.familytree.dto.PersonRequest
@@ -9,13 +11,16 @@ import com.familytree.exception.BusinessRuleException
 import com.familytree.exception.ConflictException
 import com.familytree.exception.NotFoundException
 import com.familytree.repository.FamilyTreeRepository
+import com.familytree.repository.AppUserRepository
 import com.familytree.service.GraphService
 import com.familytree.service.PersonService
 import com.familytree.service.PhotoStorageService
 import com.familytree.service.RelationshipService
 import com.familytree.service.TreeService
 import org.junit.jupiter.api.AfterEach
+import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertThrows
@@ -24,6 +29,9 @@ import org.springframework.boot.test.context.SpringBootTest
 import org.springframework.test.context.DynamicPropertyRegistry
 import org.springframework.test.context.DynamicPropertySource
 import org.springframework.mock.web.MockMultipartFile
+import org.springframework.security.core.context.SecurityContextHolder
+import org.springframework.security.oauth2.jwt.Jwt
+import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationToken
 import org.testcontainers.junit.jupiter.Container
 import org.testcontainers.junit.jupiter.Testcontainers
 import org.testcontainers.postgresql.PostgreSQLContainer
@@ -37,6 +45,7 @@ class FamilyTreeIntegrationTests @Autowired constructor(
     private val graph: GraphService,
     private val photos: PhotoStorageService,
     private val treeRepository: FamilyTreeRepository,
+    private val userRepository: AppUserRepository,
 ) {
     companion object {
         @Container
@@ -53,8 +62,26 @@ class FamilyTreeIntegrationTests @Autowired constructor(
         }
     }
 
+    private lateinit var currentUser: AppUser
+
+    @BeforeEach
+    fun authenticate() {
+        currentUser = userRepository.save(
+            AppUser(email = "tests@example.com", normalizedEmail = "tests@example.com"),
+        )
+        val jwt = Jwt.withTokenValue("integration-test")
+            .header("alg", "none")
+            .subject(currentUser.id.toString())
+            .build()
+        SecurityContextHolder.getContext().authentication = JwtAuthenticationToken(jwt)
+    }
+
     @AfterEach
-    fun clean() = treeRepository.deleteAll()
+    fun clean() {
+        treeRepository.deleteAll()
+        userRepository.deleteAll()
+        SecurityContextHolder.clearContext()
+    }
 
     @Test
     fun `creates and renames a tree`() {
@@ -98,6 +125,48 @@ class FamilyTreeIntegrationTests @Autowired constructor(
         relationships.createPartnership(tree.id, PartnershipRequest(one.id, two.id, PartnershipType.MARRIAGE))
         assertThrows<ConflictException> {
             relationships.createPartnership(tree.id, PartnershipRequest(two.id, one.id, PartnershipType.OTHER))
+        }
+    }
+
+    @Test
+    fun `partnerships have zero or one symmetric current relationship and can be cleared`() {
+        val tree = trees.create(CreateTreeRequest("Current partners"))
+        val person = people.create(tree.id, PersonRequest("Person"))
+        val firstPartner = people.create(tree.id, PersonRequest("First"))
+        val secondPartner = people.create(tree.id, PersonRequest("Second"))
+
+        val former = relationships.createPartnership(tree.id, PartnershipRequest(person.id, firstPartner.id))
+        assertFalse(former.isCurrent)
+        assertTrue(relationships.listPartnerships(tree.id, person.id).none { it.isCurrent })
+
+        relationships.setCurrentPartner(tree.id, person.id, CurrentPartnerRequest(firstPartner.id))
+        assertTrue(relationships.listPartnerships(tree.id, person.id).single().isCurrent)
+        assertTrue(relationships.listPartnerships(tree.id, firstPartner.id).single().isCurrent)
+
+        relationships.createPartnership(tree.id, PartnershipRequest(person.id, secondPartner.id, isCurrent = true))
+        val afterChange = relationships.listPartnerships(tree.id, person.id)
+        assertEquals(1, afterChange.count { it.isCurrent })
+        assertEquals(secondPartner.id, afterChange.single { it.isCurrent }.let { if (it.person1Id == person.id) it.person2Id else it.person1Id })
+        assertFalse(relationships.listPartnerships(tree.id, firstPartner.id).single().isCurrent)
+
+        relationships.setCurrentPartner(tree.id, person.id, CurrentPartnerRequest(null))
+        assertTrue(relationships.listPartnerships(tree.id, person.id).none { it.isCurrent })
+        assertFalse(relationships.listPartnerships(tree.id, secondPartner.id).single().isCurrent)
+    }
+
+    @Test
+    fun `current partner must be an existing partnership in the same tree`() {
+        val firstTree = trees.create(CreateTreeRequest("One"))
+        val secondTree = trees.create(CreateTreeRequest("Two"))
+        val person = people.create(firstTree.id, PersonRequest("Person"))
+        val unrelated = people.create(firstTree.id, PersonRequest("Unrelated"))
+        val otherTreePerson = people.create(secondTree.id, PersonRequest("Other tree"))
+
+        assertThrows<BusinessRuleException> {
+            relationships.setCurrentPartner(firstTree.id, person.id, CurrentPartnerRequest(unrelated.id))
+        }
+        assertThrows<NotFoundException> {
+            relationships.setCurrentPartner(firstTree.id, person.id, CurrentPartnerRequest(otherTreePerson.id))
         }
     }
 

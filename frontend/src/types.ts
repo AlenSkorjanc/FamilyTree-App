@@ -5,7 +5,14 @@ export interface FamilyTree {
   name: string
   createdAt: string
   updatedAt: string
+  access?: 'OWNER' | 'VIEWER' | 'GUEST_OWNER'
+  visibility?: 'PRIVATE' | 'RESTRICTED' | 'PUBLIC'
+  publicShareId?: UUID | null
 }
+
+export type TreeVisibility = 'PRIVATE' | 'RESTRICTED' | 'PUBLIC'
+export interface TreeMember { userId: UUID; email: string; displayName: string | null }
+export interface TreeSharing { visibility: TreeVisibility; publicShareId: UUID | null; members: TreeMember[] }
 
 export interface Person {
   id: UUID
@@ -46,6 +53,7 @@ export interface Partnership {
   partnershipType: PartnershipType
   startDate: string | null
   endDate: string | null
+  isCurrent: boolean
   createdAt: string
 }
 
@@ -57,6 +65,8 @@ export interface FamilyGraph {
 }
 
 export interface ApiError {
+  status?: number
+  code?: string
   message: string
   fieldErrors?: Record<string, string>
 }

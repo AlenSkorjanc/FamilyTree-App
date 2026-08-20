@@ -8,7 +8,7 @@ import { SharedChildrenPicker } from './RelativeDialog'
 type ConnectionChoice = 'PARTNERS' | 'FIRST_PARENT' | 'SECOND_PARENT'
 
 export type PeopleConnection =
-  | { kind: 'partner'; person1Id: UUID; person2Id: UUID; partnershipType: PartnershipType; copyChildrenFromPersonId?: UUID; sharedChildIds?: UUID[] }
+  | { kind: 'partner'; person1Id: UUID; person2Id: UUID; partnershipType: PartnershipType; copyChildrenFromPersonId?: UUID; sharedChildIds?: UUID[]; isCurrent: boolean }
   | { kind: 'parent-child'; parentId: UUID; childId: UUID; relationshipType: RelationshipType }
 
 interface Props {
@@ -27,6 +27,7 @@ export function ConnectPeopleDialog({ graph, personIds, busy, error, onClose, on
   const [choice, setChoice] = useState<ConnectionChoice>('PARTNERS')
   const [partnershipType, setPartnershipType] = useState<PartnershipType>('PARTNERSHIP')
   const [relationshipType, setRelationshipType] = useState<RelationshipType>('BIOLOGICAL')
+  const [isCurrent, setCurrent] = useState(false)
   const childSources = personIds.filter((personId) => graph.parentChildRelationships.some((relationship) => relationship.parentId === personId))
   const [childrenSourceId, setChildrenSourceId] = useState<UUID>(childSources[0] ?? '')
   const childrenFor = (parentId: UUID) => graph.parentChildRelationships
@@ -44,6 +45,7 @@ export function ConnectPeopleDialog({ graph, personIds, busy, error, onClose, on
         kind: 'partner', person1Id: first.id, person2Id: second.id, partnershipType,
         copyChildrenFromPersonId: selectedSharedChildIds.length && childrenSourceId ? childrenSourceId : undefined,
         sharedChildIds: partnershipType === 'PARTNERSHIP' && selectedSharedChildIds.length ? selectedSharedChildIds : undefined,
+        isCurrent,
       })
       return
     }
@@ -64,6 +66,7 @@ export function ConnectPeopleDialog({ graph, personIds, busy, error, onClose, on
           <option value="SECOND_PARENT">{t('secondParentConnection', names)}</option>
         </select>
       </label>
+      {choice === 'PARTNERS' && <label className="current-partner-checkbox"><input type="checkbox" checked={isCurrent} onChange={(event) => setCurrent(event.target.checked)} /><span>{t('setAsCurrentPartner')}</span></label>}
       <label>{t('relationshipType')}
         {choice === 'PARTNERS' ? <select value={partnershipType} onChange={(event) => setPartnershipType(event.target.value as PartnershipType)}>
           <option value="PARTNERSHIP">{t('partnership')}</option><option value="MARRIAGE">{t('marriage')}</option><option value="OTHER">{t('other')}</option>
