@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useI18n } from '../i18n'
 import { formatPersonDate } from './PersonNode'
+import { ArrowLeftIcon, ArrowRightIcon, CalendarIcon } from './Icons'
 
 interface Props {
   id: string
@@ -75,11 +76,11 @@ export function DatePicker({ id, label, value, initialViewDate, onChange }: Prop
       </div>
       {open && <div className="date-picker-popover" role="dialog" aria-label={`${t('chooseDate')}: ${label}`}>
         <header>
-          <button type="button" onClick={() => setVisibleMonth(navigateBack(visibleMonth, view))} aria-label={t('calendarPrevious')}>‹</button>
+          <button type="button" onClick={() => setVisibleMonth(navigateBack(visibleMonth, view))} aria-label={t('calendarPrevious')}><ArrowLeftIcon /></button>
           {view === 'days' && <button type="button" className="date-picker-heading" onClick={() => setView('months')} aria-label={`${t('chooseMonth')}: ${monthLabel}`}>{monthLabel}</button>}
           {view === 'months' && <button type="button" className="date-picker-heading" onClick={() => setView('years')} aria-label={`${t('chooseYear')}: ${visibleMonth.getUTCFullYear()}`}>{visibleMonth.getUTCFullYear()}</button>}
           {view === 'years' && <strong>{yearPageStart}–{yearPageStart + yearPageSize - 1}</strong>}
-          <button type="button" onClick={() => setVisibleMonth(navigateForward(visibleMonth, view))} aria-label={t('calendarNext')}>›</button>
+          <button type="button" onClick={() => setVisibleMonth(navigateForward(visibleMonth, view))} aria-label={t('calendarNext')}><ArrowRightIcon /></button>
         </header>
         {view === 'days' && <>
           <div className="date-picker-weekdays" aria-hidden="true">
@@ -118,10 +119,6 @@ export function DatePicker({ id, label, value, initialViewDate, onChange }: Prop
       </div>}
     </div>
   )
-}
-
-function CalendarIcon() {
-  return <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3v3m12-3v3M4 9h16M5 5h14a1 1 0 0 1 1 1v14H4V6a1 1 0 0 1 1-1Z" /></svg>
 }
 
 function parseDate(value: string) {

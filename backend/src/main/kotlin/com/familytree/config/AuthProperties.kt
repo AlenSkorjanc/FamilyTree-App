@@ -27,3 +27,11 @@ data class OAuthProviderProperties(
 data class CorsProperties(
     val allowedOrigins: List<String> = listOf("http://localhost:5173"),
 )
+
+@ConfigurationProperties("app.mail")
+data class AccountMailProperties(
+    val enabled: Boolean = false,
+    val from: String = "noreply@familytree.local",
+    val verificationTokenTtl: Duration = Duration.ofHours(24),
+    val passwordTokenTtl: Duration = Duration.ofMinutes(30),
+)

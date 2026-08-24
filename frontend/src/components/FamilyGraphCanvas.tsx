@@ -1,18 +1,19 @@
 import { useEffect, useMemo } from 'react'
 import ELK from 'elkjs/lib/elk.bundled.js'
 import {
-  Background, Controls, ReactFlow, ReactFlowProvider, useEdgesState, useNodesState, useReactFlow, type Edge,
+  Background, ControlButton, Controls, ReactFlow, ReactFlowProvider, useEdgesState, useNodesState, useReactFlow, type Edge,
 } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
 import type { FamilyGraph, Person, UUID } from '../types'
 import { PersonNode, type PersonFlowNode } from './PersonNode'
 import { useI18n } from '../i18n'
 import { arrangeFamilyTreePositions, findVisualGraphOccurrences, joinsPartnerCards, NODE_HEIGHT, NODE_WIDTH, PARTNER_GAP, partnershipRouteLevel, partnershipRouteY } from './familyGraphLayout'
-import { completeFamilyBranchEdgeIds, edgeIdsFromPointElements, mobileFocusedViewport, personIdsForGraphEdges, selectPersonOccurrences } from './familyGraphInteractions'
+import { closestEdgeIdFromPointElements, completeFamilyBranchEdgeIds, mobileFocusedViewport, personIdsForGraphEdges, selectPersonOccurrences } from './familyGraphInteractions'
 import { PartnershipEdge } from './PartnershipEdge'
 import { ParentChildEdge } from './ParentChildEdge'
 import { sharedFamilyEdgeId, sharedFamilyTrunkEdgeId, sharedParentFamilies } from './familyGraphEdges'
 import { partnershipStatusLabel } from '../i18n'
+import { FitViewIcon, MinusIcon, PlusIcon } from './Icons'
 
 const elk = new ELK()
 const nodeTypes = { person: PersonNode }
@@ -77,7 +78,7 @@ function Canvas({ graph, readOnly = false, selectedPersonIds, edgeSelectionActiv
       sourceHandle: 'child', targetHandle: 'parent', type: 'parentChild',
       style: {
         stroke: relation.relationshipType === 'BIOLOGICAL' ? '#899b90' : '#aa9b84',
-        strokeWidth: 1.4,
+        strokeWidth: 3.15,
         strokeDasharray: relation.relationshipType === 'BIOLOGICAL' ? undefined : '6 5',
       },
     })),
@@ -90,7 +91,7 @@ function Canvas({ graph, readOnly = false, selectedPersonIds, edgeSelectionActiv
       sourceHandle: 'child', targetHandle: 'parent', type: 'parentChild',
       style: {
         stroke: child.relationships.every((relationship) => relationship.relationshipType === 'BIOLOGICAL') ? '#899b90' : '#aa9b84',
-        strokeWidth: 1.4,
+        strokeWidth: 3.15,
         strokeDasharray: child.relationships.every((relationship) => relationship.relationshipType === 'BIOLOGICAL') ? undefined : '6 5',
       },
     }))),
@@ -98,12 +99,12 @@ function Canvas({ graph, readOnly = false, selectedPersonIds, edgeSelectionActiv
       id: sharedFamilyTrunkEdgeId(family.partnership.id),
       source: family.partnership.person1Id, target: family.partnership.person2Id,
       type: 'parentChild',
-      style: { stroke: '#899b90', strokeWidth: 1.4 },
+      style: { stroke: '#899b90', strokeWidth: 3.15 },
     })),
     ...graph.partnerships.map((relation) => ({
       id: `partner-${relation.id}`, source: relation.person1Id, target: relation.person2Id,
       sourceHandle: 'partner-bottom-source', targetHandle: 'partner-bottom-target', type: 'partnership',
-      style: { stroke: relation.isCurrent ? '#a96057' : '#c47b70', strokeWidth: 1.4 },
+      style: { stroke: relation.isCurrent ? '#a96057' : '#c47b70', strokeWidth: 3.15 },
       label: relation.isCurrent || (partnershipCounts.get(relation.person1Id) === 1 && partnershipCounts.get(relation.person2Id) === 1)
         ? partnershipStatusLabel(relation.partnershipType, t)
         : undefined,
@@ -242,10 +243,10 @@ function Canvas({ graph, readOnly = false, selectedPersonIds, edgeSelectionActiv
       }} minZoom={0.08} maxZoom={2.5} fitView nodesDraggable={false} elementsSelectable elevateEdgesOnSelect
       onEdgeClick={(event, edge) => {
         const pointElements = document.elementsFromPoint?.(event.clientX, event.clientY) ?? []
-        const overlappingEdgeIds = edgeIdsFromPointElements(pointElements, edge.id)
-        const selectedEdges = new Set(completeFamilyBranchEdgeIds(overlappingEdgeIds, graph))
+        const closestEdgeId = closestEdgeIdFromPointElements(pointElements, edge.id, event.clientX, event.clientY)
+        const selectedEdges = new Set(completeFamilyBranchEdgeIds([closestEdgeId], graph))
         setEdges((existing) => existing.map((candidate) => ({ ...candidate, selected: selectedEdges.has(candidate.id) })))
-        const personIds = personIdsForGraphEdges(overlappingEdgeIds, graph)
+        const personIds = personIdsForGraphEdges([closestEdgeId], graph)
         if (personIds.length) {
           onSelectConnection(personIds)
           return
@@ -261,7 +262,17 @@ function Canvas({ graph, readOnly = false, selectedPersonIds, edgeSelectionActiv
       proOptions={{ hideAttribution: true }}
     >
       <Background color="#e1e6e1" gap={28} size={0.8} />
-      <Controls showInteractive={false} />
+      <Controls showZoom={false} showFitView={false} showInteractive={false}>
+        <ControlButton title={t('zoomIn')} aria-label={t('zoomIn')} onClick={() => { void flow.zoomIn({ duration: 350 }) }}>
+          <PlusIcon />
+        </ControlButton>
+        <ControlButton title={t('zoomOut')} aria-label={t('zoomOut')} onClick={() => { void flow.zoomOut({ duration: 350 }) }}>
+          <MinusIcon />
+        </ControlButton>
+        <ControlButton title={t('fitView')} aria-label={t('fitView')} onClick={() => { void flow.fitView({ padding: 0.25, duration: 500 }) }}>
+          <FitViewIcon />
+        </ControlButton>
+      </Controls>
     </ReactFlow>
   )
 }

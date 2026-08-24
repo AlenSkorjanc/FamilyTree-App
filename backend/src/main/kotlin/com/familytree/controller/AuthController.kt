@@ -8,6 +8,11 @@ import com.familytree.dto.AuthenticationResponse
 import com.familytree.dto.LoginRequest
 import com.familytree.dto.MessageResponse
 import com.familytree.dto.RegisterRequest
+import com.familytree.dto.UpdateProfileRequest
+import com.familytree.dto.CompletePasswordRequest
+import com.familytree.dto.EmailRequest
+import com.familytree.dto.RequestPasswordChangeRequest
+import com.familytree.dto.TokenRequest
 import com.familytree.exception.AuthenticationFailedException
 import com.familytree.mapper.toAuthResponse
 import com.familytree.security.AuthenticatedUser
@@ -23,10 +28,14 @@ import org.springframework.http.ResponseCookie
 import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.annotation.CookieValue
 import org.springframework.web.bind.annotation.GetMapping
+import org.springframework.web.bind.annotation.DeleteMapping
+import org.springframework.web.bind.annotation.PatchMapping
 import org.springframework.web.bind.annotation.PostMapping
 import org.springframework.web.bind.annotation.RequestBody
 import org.springframework.web.bind.annotation.RequestMapping
 import org.springframework.web.bind.annotation.RestController
+import org.springframework.web.bind.annotation.ResponseStatus
+import org.springframework.http.HttpStatus
 
 @RestController
 @RequestMapping("/api/auth")
@@ -40,9 +49,10 @@ class AuthController(
     @PostMapping("/register")
     fun register(
         @Valid @RequestBody body: RegisterRequest,
-        request: HttpServletRequest,
-        response: HttpServletResponse,
-    ): ResponseEntity<AuthenticationResponse> = authenticate(authService.register(body), request, response)
+    ): ResponseEntity<MessageResponse> {
+        authService.register(body)
+        return ResponseEntity.status(HttpStatus.ACCEPTED).body(MessageResponse("Check your email to verify your account"))
+    }
 
     @PostMapping("/login")
     fun login(
@@ -89,6 +99,47 @@ class AuthController(
 
     @GetMapping("/me")
     fun me(): AuthUserResponse = authService.requireUser(authenticatedUser.id()).toAuthResponse()
+
+    @PatchMapping("/me")
+    fun updateProfile(@Valid @RequestBody body: UpdateProfileRequest): AuthUserResponse =
+        authService.updateProfile(authenticatedUser.id(), body).toAuthResponse()
+
+    @PostMapping("/verify-email")
+    fun verifyEmail(@Valid @RequestBody body: TokenRequest): MessageResponse {
+        authService.verifyEmail(body.token)
+        return MessageResponse("Email verified")
+    }
+
+    @PostMapping("/verification/resend")
+    fun resendVerification(@Valid @RequestBody body: EmailRequest): MessageResponse {
+        authService.resendVerification(body.email)
+        return MessageResponse("If the account requires verification, an email has been sent")
+    }
+
+    @PostMapping("/password/forgot")
+    fun forgotPassword(@Valid @RequestBody body: EmailRequest): MessageResponse {
+        authService.requestPasswordReset(body.email)
+        return MessageResponse("If an account exists, a password reset email has been sent")
+    }
+
+    @PostMapping("/me/password-change-request")
+    fun requestPasswordChange(@Valid @RequestBody body: RequestPasswordChangeRequest): MessageResponse {
+        authService.requestPasswordChange(authenticatedUser.id(), body)
+        return MessageResponse("Check your email to continue changing your password")
+    }
+
+    @PostMapping("/password/reset")
+    fun resetPassword(@Valid @RequestBody body: CompletePasswordRequest): MessageResponse {
+        authService.completePassword(body)
+        return MessageResponse("Password changed")
+    }
+
+    @DeleteMapping("/me")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    fun deleteProfile(response: HttpServletResponse) {
+        authService.deleteProfile(authenticatedUser.id())
+        response.addHeader(HttpHeaders.SET_COOKIE, clearRefreshCookie().toString())
+    }
 
     @GetMapping("/providers")
     fun providers() = AuthProvidersResponse(

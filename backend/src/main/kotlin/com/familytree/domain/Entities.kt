@@ -13,6 +13,7 @@ import java.util.UUID
 enum class RelationshipType { BIOLOGICAL, ADOPTIVE, STEP, OTHER }
 enum class PartnershipType { MARRIAGE, PARTNERSHIP, OTHER }
 enum class IdentityProvider { GOOGLE, FACEBOOK }
+enum class AccountTokenType { EMAIL_VERIFICATION, PASSWORD_RESET, PASSWORD_CHANGE }
 enum class TreeVisibility { PRIVATE, RESTRICTED, PUBLIC }
 
 @Entity
@@ -25,6 +26,7 @@ class FamilyTree(
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 20) var visibility: TreeVisibility = TreeVisibility.PRIVATE,
     @Column(name = "public_share_id", unique = true) var publicShareId: UUID? = null,
+    @Column(name = "public_can_edit", nullable = false) var publicCanEdit: Boolean = false,
     @Column(name = "created_at", nullable = false) var createdAt: Instant = Instant.now(),
     @Column(name = "updated_at", nullable = false) var updatedAt: Instant = Instant.now(),
 )
@@ -35,6 +37,7 @@ class FamilyTreeUserAccess(
     @Id var id: UUID = UUID.randomUUID(),
     @Column(name = "tree_id", nullable = false) var treeId: UUID = UUID.randomUUID(),
     @Column(name = "user_id", nullable = false) var userId: UUID = UUID.randomUUID(),
+    @Column(name = "can_edit", nullable = false) var canEdit: Boolean = false,
     @Column(name = "created_at", nullable = false) var createdAt: Instant = Instant.now(),
 )
 
@@ -45,13 +48,35 @@ class AppUser(
     @Column(nullable = false, length = 320) var email: String = "",
     @Column(name = "normalized_email", nullable = false, length = 320, unique = true) var normalizedEmail: String = "",
     @Column(name = "password_hash", length = 255) var passwordHash: String? = null,
+    @Column(name = "email_verified", nullable = false) var emailVerified: Boolean = true,
     @Column(name = "first_name", length = 120) var firstName: String? = null,
+    @Column(name = "middle_name", length = 120) var middleName: String? = null,
     @Column(name = "last_name", length = 120) var lastName: String? = null,
+    @Column(name = "maiden_name", length = 120) var maidenName: String? = null,
+    @Column(length = 50) var gender: String? = null,
+    @Column(name = "birth_date") var birthDate: LocalDate? = null,
+    @Column(name = "death_date") var deathDate: LocalDate? = null,
+    @Column(name = "birth_place", length = 250) var birthPlace: String? = null,
+    @Column(name = "death_place", length = 250) var deathPlace: String? = null,
+    @Column(columnDefinition = "TEXT") var notes: String? = null,
     @Column(name = "display_name", length = 250) var displayName: String? = null,
     @Column(name = "profile_picture_url", length = 2000) var profilePictureUrl: String? = null,
     @Column(nullable = false) var enabled: Boolean = true,
     @Column(name = "created_at", nullable = false) var createdAt: Instant = Instant.now(),
     @Column(name = "updated_at", nullable = false) var updatedAt: Instant = Instant.now(),
+)
+
+@Entity
+@Table(name = "account_action_token")
+class AccountActionToken(
+    @Id var id: UUID = UUID.randomUUID(),
+    @Column(name = "user_id", nullable = false) var userId: UUID = UUID.randomUUID(),
+    @Enumerated(EnumType.STRING)
+    @Column(name = "token_type", nullable = false, length = 30) var tokenType: AccountTokenType = AccountTokenType.EMAIL_VERIFICATION,
+    @Column(name = "token_hash", nullable = false, length = 64, unique = true) var tokenHash: String = "",
+    @Column(name = "created_at", nullable = false) var createdAt: Instant = Instant.now(),
+    @Column(name = "expires_at", nullable = false) var expiresAt: Instant = Instant.now(),
+    @Column(name = "used_at") var usedAt: Instant? = null,
 )
 
 @Entity

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { api, guestApi, guestTreeIds, removeGuestTreeIds } from './api'
+import { api, guestApi, guestTreeIds, publicApi, removeGuestTreeIds } from './api'
 import { FamilyGraphCanvas } from './components/FamilyGraphCanvas'
 import { haveDirectRelationship, toggleConnectionPerson } from './components/familyGraphInteractions'
 import { Modal } from './components/Modal'
@@ -9,20 +9,27 @@ import { PersonForm } from './components/PersonForm'
 import { RelativeDialog, type RelativeKind } from './components/RelativeDialog'
 import { ConnectPeopleDialog, type PeopleConnection } from './components/ConnectPeopleDialog'
 import { AppHeader, LanguageSelect } from './components/AppHeader'
-import { DeletePersonDialog, TreeNameDialog } from './components/AppDialogs'
+import { DeletePersonDialog, DeleteTreeDialog, TreeNameDialog } from './components/AppDialogs'
 import type { PartnershipType, PersonInput, RelationshipType, UUID } from './types'
 import { useI18n } from './i18n'
 import { treeIdFromPath, treePath } from './treeRouting'
 import { navigate, useAuth } from './auth'
 import { GuestTreeClaimDialog, TreeSharingDialog } from './components/TreeAccessDialogs'
+import { AppLogo } from './components/AppLogo'
+import { AccountMenu } from './components/AccountMenu'
+import { PlusIcon } from './components/Icons'
 
-export default function App() {
+export default function App({ publicShareId }: { publicShareId?: UUID }) {
   const { t } = useI18n()
   const queryClient = useQueryClient()
   const { user, logout, isAuthenticated } = useAuth()
-  const dataApi = isAuthenticated ? api : guestApi
-  const treesQuery = useQuery({ queryKey: ['trees', isAuthenticated ? 'account' : 'guest'], queryFn: dataApi.listTrees })
-  const [treeId, setTreeId] = useState<UUID | null>(() => treeIdFromPath(window.location.pathname))
+  const dataApi = publicShareId ? api : isAuthenticated ? api : guestApi
+  const signOut = () => { void logout().finally(() => { queryClient.clear(); navigate('/login', true) }) }
+  const treesQuery = useQuery({
+    queryKey: ['trees', publicShareId ? `public-${publicShareId}` : isAuthenticated ? 'account' : 'guest'],
+    queryFn: publicShareId ? async () => [(await publicApi.graph(publicShareId)).tree] : dataApi.listTrees,
+  })
+  const [treeId, setTreeId] = useState<UUID | null>(() => publicShareId ? null : treeIdFromPath(window.location.pathname))
   const [selectedId, setSelectedId] = useState<UUID | null>(null)
   const [selectedPersonIds, setSelectedPersonIds] = useState<UUID[]>([])
   const [manualConnectionSelection, setManualConnectionSelection] = useState(false)
@@ -34,6 +41,8 @@ export default function App() {
   const [newTreeName, setNewTreeName] = useState('')
   const [newTreeOpen, setNewTreeOpen] = useState(false)
   const [renameTreeOpen, setRenameTreeOpen] = useState(false)
+  const [deleteTreeConfirmOpen, setDeleteTreeConfirmOpen] = useState(false)
+  const [deleteTreePending, setDeleteTreePending] = useState(false)
   const [deletePersonConfirmOpen, setDeletePersonConfirmOpen] = useState(false)
   const [treeNameDraft, setTreeNameDraft] = useState('')
   const [error, setError] = useState<string | null>(null)
@@ -42,27 +51,30 @@ export default function App() {
   const claimPreviewedFor = useRef<string | null>(null)
 
   useEffect(() => {
-    if (!user || claimPreviewedFor.current === user.id) return
+    if (publicShareId || !user || claimPreviewedFor.current === user.id) return
     claimPreviewedFor.current = user.id
     const ids = guestTreeIds()
     if (!ids.length) return
     void api.previewGuestTrees(ids).then((trees) => { if (trees.length) setClaimableTrees(trees) }).catch(() => undefined)
-  }, [user])
+  }, [publicShareId, user])
 
   useEffect(() => {
     const trees = treesQuery.data
     if (!trees?.length) return
     const activeTreeId = treeId && trees.some((tree) => tree.id === treeId) ? treeId : trees[0].id
     if (activeTreeId !== treeId) setTreeId(activeTreeId)
-    const activePath = treePath(activeTreeId)
-    if (window.location.pathname !== activePath) window.history.replaceState(null, '', activePath)
-  }, [treeId, treesQuery.data])
+    if (!publicShareId) {
+      const activePath = treePath(activeTreeId)
+      if (window.location.pathname !== activePath) window.history.replaceState(null, '', activePath)
+    }
+  }, [publicShareId, treeId, treesQuery.data])
 
   useEffect(() => {
+    if (publicShareId) return
     const handleNavigation = () => setTreeId(treeIdFromPath(window.location.pathname))
     window.addEventListener('popstate', handleNavigation)
     return () => window.removeEventListener('popstate', handleNavigation)
-  }, [])
+  }, [publicShareId])
 
   useEffect(() => {
     const selectedTreeName = treesQuery.data?.find((tree) => tree.id === treeId)?.name
@@ -129,7 +141,7 @@ export default function App() {
   }
   const openTree = (id: UUID) => {
     setTreeId(id)
-    window.history.pushState(null, '', treePath(id))
+    if (!publicShareId) window.history.pushState(null, '', treePath(id))
     clearSelection()
   }
 
@@ -160,6 +172,26 @@ export default function App() {
       setPersonModal(null)
       clearSelection()
     })
+  }
+  const deleteCurrentTree = async () => {
+    if (!treeId) return
+    setError(null)
+    setDeleteTreePending(true)
+    try {
+      const deletedTreeId = treeId
+      await dataApi.deleteTree(deletedTreeId)
+      const nextTree = treesQuery.data?.find((tree) => tree.id !== deletedTreeId)
+      await queryClient.invalidateQueries({ queryKey: ['trees'] })
+      setDeleteTreeConfirmOpen(false)
+      clearSelection()
+      setTreeId(nextTree?.id ?? null)
+      window.history.replaceState(null, '', nextTree ? treePath(nextTree.id) : '/')
+      queryClient.removeQueries({ queryKey: ['graph', isAuthenticated ? 'account' : 'guest', deletedTreeId], exact: true })
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : t('unexpectedError'))
+    } finally {
+      setDeleteTreePending(false)
+    }
   }
 
   const connectRelative = async (relativeId: UUID, type: RelationshipType | PartnershipType, sharedChildIds?: UUID[], sharedChildrenSourceId?: UUID, isCurrent = false) => {
@@ -212,10 +244,10 @@ export default function App() {
 
   if (!treesQuery.data?.length) return <>
     <main className="welcome">
-      <div className="welcome-header"><div className="brand">{t('appName')}</div><div className="welcome-actions">{!isAuthenticated && <button className="quiet" onClick={() => navigate('/login')}>{t('signIn')}</button>}<LanguageSelect /></div></div>
-      <section><span className="sprout">⌘</span><h1>{t('startStory')}</h1><p>{t('startStoryHelp')}</p>
+      <div className="welcome-header"><button type="button" className="brand app-brand-lockup app-home-link" onClick={() => navigate('/')} aria-label={t('home')}><AppLogo className="welcome-logo" /><span>{t('appName')}</span></button><div className="welcome-actions">{user ? <AccountMenu user={user} onLogout={signOut} /> : <button className="quiet" onClick={() => navigate('/login')}>{t('signIn')}</button>}<LanguageSelect /></div></div>
+      <section><AppLogo className="welcome-hero-logo" /><h1>{t('startStory')}</h1><p>{t('startStoryHelp')}</p>
         <form onSubmit={(event) => { event.preventDefault(); if (newTreeName.trim()) createTree.mutate(newTreeName.trim()) }}>
-          <input value={newTreeName} onChange={(event) => setNewTreeName(event.target.value)} placeholder={t('treeNamePlaceholder')} autoFocus />
+          <input value={newTreeName} onChange={(event) => setNewTreeName(event.target.value)} placeholder={t('treeNamePlaceholder')} autoFocus={!window.matchMedia('(pointer: coarse), (hover: none)').matches} />
           <button type="submit" className="primary" disabled={!newTreeName.trim() || createTree.isPending}>{t('createTree')}</button>
         </form>
         {createTree.isError && <p className="form-error" role="alert">{createTree.error instanceof Error ? createTree.error.message : t('unexpectedError')}</p>}
@@ -232,21 +264,22 @@ export default function App() {
         treeName={graph?.tree.name}
         onOpenTree={openTree}
         onSelectPerson={focusPerson}
-        onNewTree={() => { setNewTreeName(''); createTree.reset(); setNewTreeOpen(true) }}
-        onRenameTree={() => { if (graph) { setError(null); setTreeNameDraft(graph.tree.name); setRenameTreeOpen(true) } }}
+        onNewTree={publicShareId ? undefined : () => { setNewTreeName(''); createTree.reset(); setNewTreeOpen(true) }}
+        onRenameTree={graph && (graph.tree.access === 'OWNER' || graph.tree.access === 'GUEST_OWNER') ? () => { setError(null); setTreeNameDraft(graph.tree.name); setRenameTreeOpen(true) } : undefined}
+        onDeleteTree={graph && (graph.tree.access === 'OWNER' || graph.tree.access === 'GUEST_OWNER') ? () => { setError(null); setDeleteTreeConfirmOpen(true) } : undefined}
         onAddPerson={() => { setError(null); setPersonModal('create') }}
         canEdit={canEdit}
         onShare={isAuthenticated && graph?.tree.access === 'OWNER' ? () => setSharingOpen(true) : undefined}
         onLogin={!isAuthenticated ? () => navigate('/login') : undefined}
         searchPeople={dataApi.searchPeople}
         user={user}
-        onLogout={() => { void logout().finally(() => { queryClient.clear(); navigate('/login', true) }) }}
+        onLogout={signOut}
       />
 
       <main className={`canvas-area ${selected ? 'with-details' : ''}`}>
         {graphQuery.isLoading && <div className="center-message">{t('arrangingTree')}</div>}
         {graphQuery.isError && <div className="center-message error">{t('loadTreeError')}</div>}
-        {graph && graph.people.length === 0 && <div className="empty-tree"><div className="empty-avatar">+</div><h2>{t('treeReady')}</h2><p>{canEdit ? t('treeReadyHelp') : t('sharedTreeEmpty')}</p>{canEdit && <button className="primary" onClick={() => setPersonModal('create')}>{t('addFirstPerson')}</button>}</div>}
+        {graph && graph.people.length === 0 && <div className="empty-tree"><div className="empty-avatar"><PlusIcon /></div><h2>{t('treeReady')}</h2><p>{canEdit ? t('treeReadyHelp') : t('sharedTreeEmpty')}</p>{canEdit && <button className="primary" onClick={() => setPersonModal('create')}>{t('addFirstPerson')}</button>}</div>}
         {graph && graph.people.length > 0 && <FamilyGraphCanvas graph={graph} readOnly={!canEdit} selectedPersonIds={selectedPersonIds} edgeSelectionActive={edgeSelectionActive} focusId={focusId} onSelect={focusPersonOccurrence} onToggleSelect={togglePersonForConnection} onSelectConnection={selectConnection} onClearSelection={clearSelection} onAddRelative={(personId, nodeId, kind) => { focusPersonOccurrence(personId, nodeId); setError(null); setRelativeKind(kind) }} />}
         {manualConnectionSelection && selectedPersonIds.length === 1 && <div className="connection-selection-help">{t('selectTwoPeopleHelp')}</div>}
         {manualConnectionSelection && selectedPersonIds.length === 2 && !selectedPeopleAreConnected && <button className="primary connect-selected" onClick={() => { setError(null); setConnectionDialogOpen(true) }}>{t('connectSelected')}</button>}
@@ -262,6 +295,7 @@ export default function App() {
       {newTreeOpen && <TreeNameDialog mode="create" value={newTreeName} pending={createTree.isPending} error={createTree.isError ? t('unexpectedError') : null} onChange={setNewTreeName} onClose={() => setNewTreeOpen(false)} onSubmit={() => createTree.mutate(newTreeName.trim())} />}
       {deletePersonConfirmOpen && selected && <DeletePersonDialog person={selected} onClose={() => setDeletePersonConfirmOpen(false)} onConfirm={deleteSelectedPerson} />}
       {renameTreeOpen && graph && <TreeNameDialog mode="rename" value={treeNameDraft} error={error} onChange={setTreeNameDraft} onClose={() => setRenameTreeOpen(false)} onSubmit={() => { if (treeId) void run(() => dataApi.updateTree(treeId, treeNameDraft.trim()), () => setRenameTreeOpen(false)) }} />}
+      {deleteTreeConfirmOpen && graph && <DeleteTreeDialog treeName={graph.tree.name} pending={deleteTreePending} error={error} onClose={() => { if (!deleteTreePending) setDeleteTreeConfirmOpen(false) }} onConfirm={() => { void deleteCurrentTree() }} />}
       {relativeKind && selectedId && graph && <RelativeDialog kind={relativeKind} selectedId={selectedId} graph={graph} error={error} onClose={() => setRelativeKind(null)} onLink={(personId, type, secondParentId, sharedChildIds, sharedChildrenSourceId, isCurrent) => addRelative(personId, type, undefined, secondParentId, sharedChildIds, sharedChildrenSourceId, isCurrent)} onCreate={(input, type, photoFile, secondParentId, sharedChildIds, isCurrent) => addRelative(input, type, photoFile, secondParentId, sharedChildIds, undefined, isCurrent)} />}
       {connectionDialogOpen && graph && selectedPersonIds.length === 2 && !selectedPeopleAreConnected && <ConnectPeopleDialog graph={graph} personIds={[selectedPersonIds[0], selectedPersonIds[1]]} error={error} onClose={() => setConnectionDialogOpen(false)} onConnect={connectSelectedPeople} />}
       {claimDialog}

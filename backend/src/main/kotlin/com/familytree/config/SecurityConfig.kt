@@ -39,7 +39,7 @@ import com.familytree.security.OAuthLoginFailureHandler
 import com.familytree.security.OAuthLoginSuccessHandler
 
 @Configuration
-@EnableConfigurationProperties(AuthProperties::class, CorsProperties::class)
+@EnableConfigurationProperties(AuthProperties::class, CorsProperties::class, AccountMailProperties::class)
 class SecurityConfig {
     @Bean
     fun passwordEncoder(): PasswordEncoder = Argon2PasswordEncoder.defaultsForSpringSecurity_v5_8()
@@ -91,8 +91,9 @@ class SecurityConfig {
             .csrf { it.ignoringRequestMatchers("/api/**") }
             .sessionManagement { it.sessionCreationPolicy(SessionCreationPolicy.IF_REQUIRED) }
             .authorizeHttpRequests {
-                it.requestMatchers(HttpMethod.POST, "/api/auth/register", "/api/auth/login", "/api/auth/refresh", "/api/auth/logout").permitAll()
+                it.requestMatchers(HttpMethod.POST, "/api/auth/register", "/api/auth/login", "/api/auth/refresh", "/api/auth/logout", "/api/auth/verify-email", "/api/auth/verification/resend", "/api/auth/password/forgot", "/api/auth/password/reset").permitAll()
                     .requestMatchers(HttpMethod.GET, "/api/auth/providers", "/api/photos/**").permitAll()
+                    .requestMatchers(HttpMethod.GET, "/actuator/health", "/actuator/health/**").permitAll()
                     .requestMatchers(HttpMethod.POST, "/api/trees/claim", "/api/trees/claim-preview").authenticated()
                     .requestMatchers("/api/trees/*/sharing", "/api/trees/*/sharing/**").authenticated()
                     .requestMatchers("/api/trees/**", "/api/public/trees/**").permitAll()

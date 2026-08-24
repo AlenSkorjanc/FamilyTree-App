@@ -18,6 +18,7 @@ export function ParentChildEdge({ id, sourceX, sourceY, targetX, targetY, style,
         : sharedFamilyBranchPath(origin.x, origin.splitY, targetX, targetY)
       : familyBranchPath(sourceX, sourceY, targetX, targetY)}
     style={{ ...style, strokeLinecap: isSharedTrunk ? 'butt' : 'round', strokeLinejoin: 'round' }}
+    interactionWidth={40}
   />
 }
 

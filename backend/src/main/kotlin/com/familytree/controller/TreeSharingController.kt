@@ -5,6 +5,7 @@ import com.familytree.dto.TreeSharingResponse
 import com.familytree.service.TreeSharingService
 import jakarta.validation.Valid
 import org.springframework.web.bind.annotation.GetMapping
+import org.springframework.web.bind.annotation.DeleteMapping
 import org.springframework.web.bind.annotation.PutMapping
 import org.springframework.web.bind.annotation.PathVariable
 import org.springframework.web.bind.annotation.RequestBody
@@ -21,4 +22,7 @@ class TreeSharingController(private val service: TreeSharingService) {
     @PutMapping
     fun update(@PathVariable treeId: UUID, @Valid @RequestBody request: TreeSharingRequest): TreeSharingResponse =
         service.update(treeId, request)
+
+    @DeleteMapping("/public-link")
+    fun deletePublicLink(@PathVariable treeId: UUID): TreeSharingResponse = service.deletePublicLink(treeId)
 }

@@ -12,7 +12,8 @@ import java.util.UUID
 
 data class CreateTreeRequest(@field:NotBlank @field:Size(max = 200) val name: String)
 data class UpdateTreeRequest(@field:NotBlank @field:Size(max = 200) val name: String)
-enum class TreeAccess { OWNER, VIEWER, GUEST_OWNER }
+enum class TreeAccess { OWNER, EDITOR, VIEWER, GUEST_OWNER }
+enum class TreePermission { VIEW, EDIT }
 data class TreeResponse(
     val id: UUID,
     val name: String,
@@ -25,15 +26,21 @@ data class TreeResponse(
 
 data class ClaimGuestTreesRequest(@field:Size(max = 100) val treeIds: Set<UUID>)
 
-data class TreeSharingRequest(
-    val visibility: TreeVisibility,
-    @field:Size(max = 100) val sharedWithEmails: Set<@Email @Size(max = 320) String> = emptySet(),
+data class TreeMemberRequest(
+    @field:Email @field:Size(max = 320) val email: String,
+    val permission: TreePermission = TreePermission.VIEW,
 )
 
-data class TreeMemberResponse(val userId: UUID, val email: String, val displayName: String?)
+data class TreeSharingRequest(
+    val publicPermission: TreePermission? = null,
+    @field:Size(max = 100) val members: Set<TreeMemberRequest> = emptySet(),
+)
+
+data class TreeMemberResponse(val userId: UUID, val email: String, val displayName: String?, val permission: TreePermission)
 data class TreeSharingResponse(
     val visibility: TreeVisibility,
     val publicShareId: UUID?,
+    val publicPermission: TreePermission?,
     val members: List<TreeMemberResponse>,
 )
 

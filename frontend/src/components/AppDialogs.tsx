@@ -54,3 +54,27 @@ export function DeletePersonDialog({ person, onClose, onConfirm }: DeletePersonD
     </Modal>
   )
 }
+
+interface DeleteTreeDialogProps {
+  treeName: string
+  pending: boolean
+  error?: string | null
+  onClose: () => void
+  onConfirm: () => void
+}
+
+export function DeleteTreeDialog({ treeName, pending, error, onClose, onConfirm }: DeleteTreeDialogProps) {
+  const { t } = useI18n()
+  return (
+    <Modal title={t('deleteTree')} onClose={onClose}>
+      <div className="confirmation-dialog">
+        <p>{t('deleteTreeConfirm', { name: treeName })}</p>
+        {error && <p className="form-error" role="alert">{error}</p>}
+        <footer>
+          <button type="button" className="quiet" disabled={pending} onClick={onClose}>{t('cancel')}</button>
+          <button type="button" className="danger-button" disabled={pending} onClick={onConfirm}>{pending ? t('deletingTree') : t('deleteTree')}</button>
+        </footer>
+      </div>
+    </Modal>
+  )
+}

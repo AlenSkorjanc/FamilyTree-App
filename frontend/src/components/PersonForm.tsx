@@ -4,15 +4,16 @@ import type { Person, PersonInput } from '../types'
 import { useI18n } from '../i18n'
 import { resolvePhotoUrl } from '../api'
 import { DatePicker } from './DatePicker'
+import { ChevronIcon } from './Icons'
 
 const emptyValues: PersonInput = {
   firstName: '', middleName: null, lastName: null, maidenName: null, gender: null,
   birthDate: null, deathDate: null, birthPlace: null, deathPlace: null, photoUrl: null, notes: null,
 }
 
-interface Props { person?: Person; initialValues?: Partial<PersonInput>; birthDatePickerAnchor?: string; submitLabel?: string; busy?: boolean; error?: string | null; autoFocusFirstField?: boolean; onSubmit: (input: PersonInput, photoFile?: File) => void; onCancel?: () => void }
+interface Props { person?: Person; initialValues?: Partial<PersonInput>; currentPhotoUrl?: string | null; emailField?: { value: string; onChange: (value: string) => void }; birthDatePickerAnchor?: string; submitLabel?: string; busy?: boolean; error?: string | null; autoFocusFirstField?: boolean; onSubmit: (input: PersonInput, photoFile?: File) => void; onCancel?: () => void }
 
-export function PersonForm({ person, initialValues, birthDatePickerAnchor, submitLabel, busy, error, autoFocusFirstField = true, onSubmit, onCancel }: Props) {
+export function PersonForm({ person, initialValues, currentPhotoUrl, emailField, birthDatePickerAnchor, submitLabel, busy, error, autoFocusFirstField = true, onSubmit, onCancel }: Props) {
   const { t } = useI18n()
   const [photoFile, setPhotoFile] = useState<File>()
   const [additionalDetailsOpen, setAdditionalDetailsOpen] = useState(() => Boolean(person?.middleName || person?.maidenName || person?.deathDate || person?.deathPlace))
@@ -24,6 +25,7 @@ export function PersonForm({ person, initialValues, birthDatePickerAnchor, submi
   return (
     <form className="person-form" onSubmit={handleSubmit((value) => onSubmit(normalize(value), photoFile))}>
       <div className="form-grid">
+        {emailField && <label className="full"><span className="field-label">{t('email')} <span className="required-indicator" aria-hidden="true">*</span></span><input type="email" autoComplete="email" required value={emailField.value} onChange={(event) => emailField.onChange(event.target.value)} /></label>}
         <label><span className="field-label">{t('firstName')} <span className="required-indicator" aria-hidden="true">*</span></span><input aria-required="true" autoFocus={autoFocusFirstField} {...register('firstName', { required: t('firstNameRequired') })} />{errors.firstName && <em>{errors.firstName.message}</em>}</label>
         <label>{t('lastName')}<input {...register('lastName')} /></label>
         <label>{t('gender')}<select {...register('gender')}><option value="">{t('chooseGender')}</option><option value="MALE">{t('male')}</option><option value="FEMALE">{t('female')}</option></select></label>
@@ -37,7 +39,7 @@ export function PersonForm({ person, initialValues, birthDatePickerAnchor, submi
           onClick={() => setAdditionalDetailsOpen((current) => !current)}
         >
           <span>{additionalDetailsOpen ? t('hideAdditionalDetails') : t('showAdditionalDetails')}</span>
-          <span className="additional-details-chevron" aria-hidden="true" />
+          <ChevronIcon className="additional-details-chevron" />
         </button>
         {additionalDetailsOpen && <div className="additional-details-fields full">
           <label>{t('middleName')}<input {...register('middleName')} /></label>
@@ -46,7 +48,7 @@ export function PersonForm({ person, initialValues, birthDatePickerAnchor, submi
           <label>{t('deathPlace')}<input {...register('deathPlace')} /></label>
         </div>}
         <label className="full photo-upload">{t('photo')}
-          {person?.photoUrl && <img src={resolvePhotoUrl(person.photoUrl)} alt={t('currentPhoto')} />}
+          {(person?.photoUrl || currentPhotoUrl) && <img src={resolvePhotoUrl(person?.photoUrl ?? currentPhotoUrl ?? '')} alt={t('currentPhoto')} />}
           <input type="file" accept=".jpg,.jpeg,.png,.webp,.gif,image/jpeg,image/png,image/webp,image/gif" onChange={(event) => setPhotoFile(event.target.files?.[0])} />
           <small>{t('photoHelp')}</small>
         </label>

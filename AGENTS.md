@@ -29,6 +29,17 @@
 - Never edit an already-released migration in an established environment.
 - Preserve constraints, indexes, and the absence of artificial person/generation limits.
 
+## Production deployment
+
+- Production is one Spring Boot container that serves the compiled React application; do not add a separate frontend server or deployment.
+- Frontend production API and OAuth URLs stay same-origin and relative. Local development routes `/api`, `/oauth2`, and `/login/oauth2` through the Vite proxy.
+- Production must listen on `${PORT}` and use forwarded-header handling appropriate for the Koyeb reverse proxy.
+- Production persistence must never rely on the container filesystem. PostgreSQL and future external object storage are the only durable stores.
+- All production credentials and secrets come from environment variables or the platform secret store. Never commit `.env` or real credentials.
+- Production refresh cookies must be `HttpOnly`, `Secure`, `SameSite=Lax`, and scoped to `/api/auth`.
+- Never expose access tokens, refresh tokens, OAuth codes, credentials, or secrets in URLs or logs.
+- Run the root Docker build plus relevant backend and frontend tests after deployment-related changes.
+
 ## Authentication and authorization
 
 - Never store plaintext passwords or raw refresh tokens in the database.

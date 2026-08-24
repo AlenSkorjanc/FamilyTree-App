@@ -26,7 +26,7 @@ class RelationshipService(
 ) {
     @Transactional
     fun createParentChild(treeId: UUID, request: ParentChildRequest): ParentChildResponse {
-        treeService.requireTree(treeId)
+        treeService.requireEditableTree(treeId)
         if (request.parentId == request.childId) throw BusinessRuleException("A person cannot be their own parent")
         personService.requirePerson(treeId, request.parentId)
         personService.requirePersonForUpdate(treeId, request.childId)
@@ -58,7 +58,7 @@ class RelationshipService(
 
     @Transactional
     fun deleteParentChild(treeId: UUID, relationshipId: UUID) {
-        treeService.requireTree(treeId)
+        treeService.requireEditableTree(treeId)
         val relationship = parentChildren.findByIdAndTreeId(relationshipId, treeId)
             ?: throw NotFoundException("Parent-child relationship $relationshipId was not found")
         parentChildren.delete(relationship)
@@ -66,7 +66,7 @@ class RelationshipService(
 
     @Transactional
     fun createPartnership(treeId: UUID, request: PartnershipRequest): PartnershipResponse {
-        treeService.requireTree(treeId)
+        treeService.requireEditableTree(treeId)
         if (request.person1Id == request.person2Id) throw BusinessRuleException("A person cannot be partnered with themselves")
         if (request.startDate != null && request.endDate != null && request.endDate.isBefore(request.startDate)) {
             throw BusinessRuleException("Partnership end date cannot be before its start date")
@@ -121,7 +121,7 @@ class RelationshipService(
 
     @Transactional
     fun updatePartnership(treeId: UUID, partnershipId: UUID, request: PartnershipRequest): PartnershipResponse {
-        treeService.requireTree(treeId)
+        treeService.requireEditableTree(treeId)
         val current = partnerships.findByIdAndTreeId(partnershipId, treeId)
             ?: throw NotFoundException("Partnership $partnershipId was not found")
         if (request.person1Id == request.person2Id) throw BusinessRuleException("A person cannot be partnered with themselves")
@@ -155,7 +155,7 @@ class RelationshipService(
 
     @Transactional
     fun setCurrentPartner(treeId: UUID, personId: UUID, request: CurrentPartnerRequest): List<PartnershipResponse> {
-        treeService.requireTree(treeId)
+        treeService.requireEditableTree(treeId)
         val personIds = setOfNotNull(personId, request.partnerId)
         lockPeople(treeId, personIds)
         val selected = request.partnerId?.let { partnerId ->
@@ -179,7 +179,7 @@ class RelationshipService(
 
     @Transactional
     fun deletePartnership(treeId: UUID, partnershipId: UUID) {
-        treeService.requireTree(treeId)
+        treeService.requireEditableTree(treeId)
         val partnership = partnerships.findByIdAndTreeId(partnershipId, treeId)
             ?: throw NotFoundException("Partnership $partnershipId was not found")
         partnerships.delete(partnership)

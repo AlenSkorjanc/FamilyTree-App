@@ -9,7 +9,8 @@ import com.familytree.domain.IdentityProvider
 import com.familytree.domain.RefreshToken
 import com.familytree.domain.UserIdentity
 import com.familytree.domain.FamilyTreeUserAccess
-import com.familytree.domain.TreeVisibility
+import com.familytree.domain.AccountActionToken
+import com.familytree.domain.AccountTokenType
 import jakarta.persistence.LockModeType
 import org.springframework.data.jpa.repository.Lock
 import org.springframework.data.jpa.repository.JpaRepository
@@ -23,20 +24,26 @@ interface FamilyTreeRepository : JpaRepository<FamilyTree, UUID> {
     fun findByIdAndOwnerUserId(id: UUID, ownerUserId: UUID): FamilyTree?
     fun findByGuestOwnerIdOrderByCreatedAt(guestOwnerId: UUID): List<FamilyTree>
     fun findByIdAndGuestOwnerId(id: UUID, guestOwnerId: UUID): FamilyTree?
-    fun findByIdAndVisibility(id: UUID, visibility: TreeVisibility): FamilyTree?
-    fun findByPublicShareIdAndVisibility(publicShareId: UUID, visibility: TreeVisibility): FamilyTree?
+    fun findByPublicShareId(publicShareId: UUID): FamilyTree?
+    fun findByIdAndPublicShareId(id: UUID, publicShareId: UUID): FamilyTree?
 }
 
 interface FamilyTreeUserAccessRepository : JpaRepository<FamilyTreeUserAccess, UUID> {
     fun findByTreeIdOrderByCreatedAt(treeId: UUID): List<FamilyTreeUserAccess>
     fun findByUserId(userId: UUID): List<FamilyTreeUserAccess>
-    fun existsByTreeIdAndUserId(treeId: UUID, userId: UUID): Boolean
+    fun findByTreeIdAndUserId(treeId: UUID, userId: UUID): FamilyTreeUserAccess?
     fun deleteByTreeId(treeId: UUID)
 }
 
 interface AppUserRepository : JpaRepository<AppUser, UUID> {
     fun findByNormalizedEmail(normalizedEmail: String): AppUser?
     fun existsByNormalizedEmail(normalizedEmail: String): Boolean
+}
+
+interface AccountActionTokenRepository : JpaRepository<AccountActionToken, UUID> {
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    fun findByTokenHash(tokenHash: String): AccountActionToken?
+    fun deleteByUserIdAndTokenType(userId: UUID, tokenType: AccountTokenType)
 }
 
 interface UserIdentityRepository : JpaRepository<UserIdentity, UUID> {

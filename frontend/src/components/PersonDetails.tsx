@@ -4,6 +4,7 @@ import type { FamilyGraph, ParentChildRelationship, Partnership, PartnershipType
 import { useEffect, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react'
 import { formatPersonDate, PersonAvatar, personGenderTone } from './PersonNode'
 import { PersonForm } from './PersonForm'
+import { ChevronIcon, CloseIcon, PencilIcon, RemoveRelationshipIcon, TrashIcon } from './Icons'
 
 type SheetSize = 'half' | 'full'
 type SheetStyle = CSSProperties & { '--sheet-drag-offset': string }
@@ -95,7 +96,7 @@ export function PersonDetails({ person, graph, editing = false, readOnly = false
     <li key={`${detail}-${relative.id}`}>
       <button className="relative-name" onClick={() => onSelect(relative.id)}>{fullName(relative)}</button>
       <small>{relationshipLabel(detail, t).toLowerCase()}</small>
-      {!readOnly && <button className="remove-link" onClick={remove} aria-label={t('removeRelationship', { name: fullName(relative) })}>×</button>}
+      {!readOnly && <button className="remove-link" onClick={remove} aria-label={t('removeRelationship', { name: fullName(relative) })}><RemoveRelationshipIcon /></button>}
     </li>
   )
 
@@ -118,9 +119,9 @@ export function PersonDetails({ person, graph, editing = false, readOnly = false
           <small>{partnershipStatusLabel(relation.partnershipType, t)}{relation.isCurrent ? ` · ${t('currentPartnerShort')}` : ''}</small>
           {!readOnly && <div className="relationship-actions">
             <button className="edit-link" onClick={() => { setPartnershipTypeDraft(relation.partnershipType); setEditingPartnershipId(relation.id) }} aria-label={t('editRelationship')} title={t('editRelationship')}>
-              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m4 20 4.2-1 10.7-10.7a2.1 2.1 0 0 0-3-3L5.2 16 4 20Z" /><path d="m14.8 6.5 2.8 2.8" /></svg>
+              <PencilIcon />
             </button>
-            <button className="remove-link" onClick={() => onRemovePartnership(relation)} aria-label={t('removeRelationship', { name: fullName(partner) })}>×</button>
+            <button className="remove-link" onClick={() => onRemovePartnership(relation)} aria-label={t('removeRelationship', { name: fullName(partner) })}><RemoveRelationshipIcon /></button>
           </div>}
         </>}
       </li>
@@ -143,10 +144,10 @@ export function PersonDetails({ person, graph, editing = false, readOnly = false
         <div className="details-header-title">
           <span>{editing ? t('editPerson') : t('personDetails')}</span>
           {editing && !readOnly && <button className="details-delete-button" onClick={onDelete} aria-label={t('deletePerson')} title={t('deletePerson')}>
-            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M9 7V4h6v3m3 0-1 13H7L6 7m4 4v5m4-5v5" /></svg>
+            <TrashIcon />
           </button>}
         </div>
-        <button className="icon-button" onClick={onClose} aria-label={t('closeDetails')}>×</button>
+        <button className="icon-button" onClick={onClose} aria-label={t('closeDetails')}><CloseIcon /></button>
       </header>
       {editing ? (
         <div className="details-scroll details-edit-scroll">
@@ -158,7 +159,7 @@ export function PersonDetails({ person, graph, editing = false, readOnly = false
           <div className="details-name-row">
             <h2>{fullName(person)}</h2>
             {!readOnly && <button className="details-edit-button" onClick={onEdit} aria-label={t('editPerson')}>
-              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m4 20 4.2-1 10.7-10.7a2.1 2.1 0 0 0-3-3L5.2 16 4 20Z" /><path d="m14.8 6.5 2.8 2.8" /></svg>
+              <PencilIcon />
             </button>}
           </div>
         </div>
@@ -183,7 +184,7 @@ export function PersonDetails({ person, graph, editing = false, readOnly = false
           {!readOnly && partners.length > 1 && <li className="current-partner-picker-row">
             <button type="button" className="current-partner-picker-toggle" aria-expanded={currentPartnerPickerOpen} onClick={() => setCurrentPartnerPickerOpen((open) => !open)}>
               <span><strong>{t('currentPartner')}</strong><small>{currentPartner ? fullName(currentPartner) : t('noCurrentPartner')}</small></span>
-              <span className="shared-children-chevron" aria-hidden="true" />
+              <ChevronIcon className="shared-children-chevron" />
             </button>
             {currentPartnerPickerOpen && <fieldset className="current-partner-picker">
               <legend>{t('currentPartner')}</legend>

@@ -23,7 +23,7 @@ class PersonService(
 ) {
     @Transactional
     fun create(treeId: UUID, request: PersonRequest): PersonResponse {
-        treeService.requireTree(treeId)
+        treeService.requireEditableTree(treeId)
         validateDates(request)
         return people.save(Person(treeId = treeId).applyRequest(request)).toResponse()
     }
@@ -55,7 +55,7 @@ class PersonService(
     }
 
     fun requirePerson(treeId: UUID, personId: UUID): Person {
-        treeService.requireTree(treeId)
+        treeService.requireEditableTree(treeId)
         return people.findByIdAndTreeId(personId, treeId)
             ?: throw NotFoundException("Person $personId was not found in tree $treeId")
     }

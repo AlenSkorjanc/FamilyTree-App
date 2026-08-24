@@ -3,6 +3,7 @@ import { fullName, resolvePhotoUrl } from '../api'
 import type { Person } from '../types'
 import { useI18n } from '../i18n'
 import type { RelativeKind } from './RelativeDialog'
+import { CopyIcon } from './Icons'
 
 export type PersonNodeData = {
   person: Person
@@ -43,7 +44,7 @@ export function PersonNode({ data, selected }: NodeProps<PersonFlowNode>) {
   const bornLabel = t(bornTranslationKey(data.person.gender))
   return (
     <article className={`person-node person-node-${genderTone} ${selected ? 'selected' : ''} ${data.isAlias ? 'person-node-alias' : ''} ${data.joinedPartnerLeft ? 'person-node-joined-left' : ''} ${data.joinedPartnerRight ? 'person-node-joined-right' : ''}`} aria-label={fullName(data.person)}>
-      {data.isAlias && <span className="person-alias-badge">↗ {t('samePerson')}</span>}
+      {data.isAlias && <span className="person-alias-badge"><CopyIcon /> {t('samePerson')}</span>}
       <Handle type="target" position={Position.Top} id="parent" />
       <PersonAvatar person={data.person} />
       <div className="person-node-copy">

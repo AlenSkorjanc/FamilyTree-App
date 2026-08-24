@@ -5,6 +5,10 @@ import { useI18n } from '../i18n'
 import type { FamilyTree, UUID } from '../types'
 import { SearchBox } from './SearchBox'
 import type { AuthUser } from '../authClient'
+import { AppLogo } from './AppLogo'
+import { navigate } from '../auth'
+import { AccountMenu } from './AccountMenu'
+import { PencilIcon, PlusIcon, ShareIcon, TrashIcon } from './Icons'
 
 interface Props {
   treeId: UUID | null
@@ -12,8 +16,9 @@ interface Props {
   treeName?: string
   onOpenTree: (id: UUID) => void
   onSelectPerson: (id: UUID) => void
-  onNewTree: () => void
-  onRenameTree: () => void
+  onNewTree?: () => void
+  onRenameTree?: () => void
+  onDeleteTree?: () => void
   onAddPerson: () => void
   user: AuthUser | null
   onLogout: () => void
@@ -23,12 +28,11 @@ interface Props {
   searchPeople: (treeId: UUID, search: string) => Promise<import('../types').Person[]>
 }
 
-export function AppHeader({ treeId, trees, treeName, onOpenTree, onSelectPerson, onNewTree, onRenameTree, onAddPerson, user, onLogout, canEdit, onShare, onLogin, searchPeople }: Props) {
+export function AppHeader({ treeId, trees, treeName, onOpenTree, onSelectPerson, onNewTree, onRenameTree, onDeleteTree, onAddPerson, user, onLogout, canEdit, onShare, onLogin, searchPeople }: Props) {
   const { t } = useI18n()
   const [search, setSearch] = useState('')
   const [menuOpen, setMenuOpen] = useState(false)
   const menuRef = useRef<HTMLDivElement>(null)
-  const [userMenuOpen, setUserMenuOpen] = useState(false)
   const searchQuery = useQuery({
     queryKey: ['people-search', treeId, search],
     queryFn: () => searchPeople(treeId!, search),
@@ -58,7 +62,10 @@ export function AppHeader({ treeId, trees, treeName, onOpenTree, onSelectPerson,
   return (
     <header className="topbar">
       <div className="header-brand" title={treeName ? `${t('appName')} — ${treeName}` : t('appName')}>
-        <span className="header-app-name">{t('appName')}</span>
+        <button type="button" className="app-home-link header-home-link" onClick={() => navigate('/')} aria-label={t('home')}>
+          <AppLogo className="header-logo" />
+          <span className="header-app-name">{t('appName')}</span>
+        </button>
         {treeName && <><span className="header-title-separator" aria-hidden="true">|</span><span className="header-tree-name">{treeName}</span></>}
       </div>
       {menuOpen && <button className="menu-backdrop" aria-label={t('closeMenu')} onClick={() => setMenuOpen(false)} />}
@@ -82,9 +89,10 @@ export function AppHeader({ treeId, trees, treeName, onOpenTree, onSelectPerson,
             </select>
           </label>
           <div className="tree-actions">
-            <button className="quiet" onClick={() => finishMenuAction(onNewTree)}><span className="menu-action-symbol" aria-hidden="true">＋</span><span>{t('newTree').replace('+ ', '')}</span></button>
-            {treeName && canEdit && <button className="quiet" onClick={() => finishMenuAction(onRenameTree)}><span className="menu-action-symbol" aria-hidden="true">✎</span><span>{t('rename')}</span></button>}
-            {treeName && onShare && <button className="quiet" onClick={() => finishMenuAction(onShare)}><span className="menu-action-symbol" aria-hidden="true">↗</span><span>{t('shareTree')}</span></button>}
+            {onNewTree && <button className="quiet" onClick={() => finishMenuAction(onNewTree)}><span className="menu-action-symbol"><PlusIcon /></span><span>{t('newTree').replace('+ ', '')}</span></button>}
+            {treeName && onRenameTree && <button className="quiet" onClick={() => finishMenuAction(onRenameTree)}><span className="menu-action-symbol"><PencilIcon /></span><span>{t('rename')}</span></button>}
+            {treeName && onShare && <button className="quiet" onClick={() => finishMenuAction(onShare)}><span className="menu-action-symbol"><ShareIcon /></span><span>{t('shareTree')}</span></button>}
+            {treeName && onDeleteTree && <button className="quiet menu-delete-tree" onClick={() => finishMenuAction(onDeleteTree)}><span className="menu-action-symbol"><TrashIcon /></span><span>{t('deleteTree')}</span></button>}
           </div>
         </div>
         <div className="global-search">
@@ -105,14 +113,11 @@ export function AppHeader({ treeId, trees, treeName, onOpenTree, onSelectPerson,
         </div>
         {canEdit && <button className="primary add-person menu-add-person" aria-label={t('addPerson').replace('+ ', '')} onClick={() => finishMenuAction(onAddPerson)}><span>{t('addPerson')}</span></button>}
       </div>
-      {user && <div className="user-menu">
-        <button className="user-menu-trigger" aria-expanded={userMenuOpen} onClick={() => setUserMenuOpen((open) => !open)}>
-          <span className="user-avatar">{userInitials(user)}</span><span className="user-name">{user.displayName || [user.firstName, user.lastName].filter(Boolean).join(' ') || user.email}</span><span aria-hidden="true">⌄</span>
-        </button>
-        {userMenuOpen && <div className="user-menu-popover"><small>{user.email}</small><button onClick={() => { setUserMenuOpen(false); onLogout() }}>{t('signOut')}</button></div>}
-      </div>}
-      {!user && onLogin && <button className="quiet guest-sign-in" onClick={onLogin}>{t('signIn')}</button>}
-      <LanguageSelect />
+      <div className="topbar-account-actions">
+        {user && <AccountMenu user={user} onLogout={onLogout} />}
+        {!user && onLogin && <button className="quiet guest-sign-in" onClick={onLogin}>{t('signIn')}</button>}
+        <LanguageSelect />
+      </div>
       <button
         type="button"
         className="mobile-menu-toggle"
@@ -123,11 +128,6 @@ export function AppHeader({ treeId, trees, treeName, onOpenTree, onSelectPerson,
       ><span /><span /><span /></button>
     </header>
   )
-}
-
-function userInitials(user: AuthUser) {
-  const names = [user.firstName, user.lastName].filter((value): value is string => Boolean(value))
-  return names.length ? names.map((value) => value[0]).join('').slice(0, 2).toUpperCase() : user.email[0].toUpperCase()
 }
 
 function useMobileKeyboardReset(menuRef: RefObject<HTMLDivElement | null>) {

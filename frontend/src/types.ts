@@ -5,14 +5,16 @@ export interface FamilyTree {
   name: string
   createdAt: string
   updatedAt: string
-  access?: 'OWNER' | 'VIEWER' | 'GUEST_OWNER'
+  access?: 'OWNER' | 'EDITOR' | 'VIEWER' | 'GUEST_OWNER'
   visibility?: 'PRIVATE' | 'RESTRICTED' | 'PUBLIC'
   publicShareId?: UUID | null
 }
 
 export type TreeVisibility = 'PRIVATE' | 'RESTRICTED' | 'PUBLIC'
-export interface TreeMember { userId: UUID; email: string; displayName: string | null }
-export interface TreeSharing { visibility: TreeVisibility; publicShareId: UUID | null; members: TreeMember[] }
+export type TreePermission = 'VIEW' | 'EDIT'
+export interface TreeMember { userId: UUID; email: string; displayName: string | null; permission: TreePermission }
+export interface TreeMemberInput { email: string; permission: TreePermission }
+export interface TreeSharing { visibility: TreeVisibility; publicShareId: UUID | null; publicPermission: TreePermission | null; members: TreeMember[] }
 
 export interface Person {
   id: UUID

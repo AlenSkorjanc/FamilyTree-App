@@ -19,6 +19,7 @@ data class StoredPhoto(val resource: Resource, val mediaType: MediaType)
 @Service
 class PhotoStorageService(
     private val treeService: TreeService,
+    @Value("\${app.photo-storage.enabled:true}") private val uploadsEnabled: Boolean,
     @Value("\${app.photo-storage.path}") storagePath: String,
 ) {
     private val root: Path = Path.of(storagePath).toAbsolutePath().normalize()
@@ -30,7 +31,14 @@ class PhotoStorageService(
     )
 
     fun store(treeId: UUID, file: MultipartFile): PhotoUploadResponse {
-        treeService.requireTree(treeId)
+        treeService.requireEditableTree(treeId)
+        return store(file)
+    }
+
+    fun storeProfile(file: MultipartFile): PhotoUploadResponse = store(file)
+
+    private fun store(file: MultipartFile): PhotoUploadResponse {
+        if (!uploadsEnabled) throw BusinessRuleException("Photo uploads require persistent object storage and are disabled in this deployment")
         if (file.isEmpty) throw BusinessRuleException("Photo file cannot be empty")
         val extension = allowedTypes[file.contentType]
             ?: throw BusinessRuleException("Only JPEG, PNG, WebP, and GIF images are supported")

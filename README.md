@@ -33,7 +33,7 @@ npm install
 npm run dev
 ```
 
-Open <http://localhost:5173>. Vite proxies `/api` to the backend at `http://localhost:8080`; same-origin requests through the Vite proxy also work when the app is opened from a mobile device over the local network. Direct cross-origin API access must still be explicitly permitted with `ALLOWED_ORIGINS`.
+Open <http://localhost:5173>. Vite proxies `/api`, `/oauth2`, and `/login/oauth2` to the backend at `http://localhost:8080`; same-origin requests through the Vite proxy also work when the app is opened from a mobile device over the local network. Direct cross-origin API access must still be explicitly permitted with `ALLOWED_ORIGINS`.
 
 Local database defaults are `localhost:5432`, database `family_tree`, and user/password `family_tree`. Override them with `DB_URL`, `DB_USERNAME`, and `DB_PASSWORD`. Uploaded profile images are stored in `backend/data/photos` by default; set `PHOTO_STORAGE_PATH` to use another persistent location. Compose variables are documented in `.env.example`; production deployments should supply secrets externally.
 
@@ -119,6 +119,95 @@ For Facebook login, create a Meta application and set `FACEBOOK_CLIENT_ID` and `
 http://localhost:8080/login/oauth2/code/facebook
 ```
 
-Social buttons remain hidden unless both values for that provider are present. Social success sets only the refresh cookie and redirects to `/auth/callback`; no token is placed in a URL. If a provider returns an email already belonging to another account, automatic linking is refused and the user must first authenticate the existing account. A complete account-linking UI, email verification/password recovery, and infrastructure-backed login rate limiting remain production-hardening work.
+Social buttons remain hidden unless both values for that provider are present. Social success sets only the refresh cookie and redirects to `/auth/callback`; no access or refresh token is placed in a URL. If a provider returns an email already belonging to another account, automatic linking is refused and the user must first authenticate the existing account. Registration verification, forgotten-password recovery, and verified password changes use expiring single-use email tokens whose hashes are stored in PostgreSQL. Infrastructure-backed login rate limiting remains future production-hardening work.
 
 Authentication configuration is listed in `.env.example`: `JWT_SECRET`, `JWT_ISSUER`, `JWT_AUDIENCE`, `JWT_ACCESS_TOKEN_TTL`, `REFRESH_TOKEN_TTL`, `REFRESH_COOKIE_SECURE`, `FRONTEND_URL`, `ALLOWED_ORIGINS`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `FACEBOOK_CLIENT_ID`, and `FACEBOOK_CLIENT_SECRET`. Set a strong unique `JWT_SECRET` and `REFRESH_COOKIE_SECURE=true` in production. No social secrets have development defaults.
+
+## Deployment — Koyeb + Neon
+
+Production uses one container: a Node build stage compiles the React application, a Java 21 build stage copies `frontend/dist` into Spring Boot's static resources and creates the executable JAR, and a small Java 21 JRE stage runs only that JAR. Spring serves both the UI and API on the same host. The application listens on `${PORT:8080}`, uses container-aware heap sizing, runs Flyway on startup, and exposes only `GET /actuator/health` for platform health checks.
+
+The production profile uses a small configurable Hikari pool and `ddl-auto=validate`. Neon must be supplied as a PostgreSQL JDBC URL with TLS, for example `jdbc:postgresql://HOST/DATABASE?sslmode=require`. React API and OAuth requests remain relative and same-origin; Spring's forwarded-header support ensures OAuth callback URLs use the public HTTPS scheme behind Koyeb.
+
+### 1. Create the Neon database
+
+1. Create a Neon project and choose a region near the application, preferably AWS Europe (Frankfurt) when available.
+2. Open the project's **Connection Details** and select a pooled connection if Neon offers one for the branch.
+3. Copy the host, database, username, and password. Convert the connection string to JDBC form: `jdbc:postgresql://<HOST>/<DATABASE>?sslmode=require`.
+4. Keep the password in Koyeb Secrets; do not add it to this repository or a committed `.env` file.
+5. No schema import is needed. Flyway applies every migration automatically on first application startup.
+
+### 2. Create the Koyeb service
+
+1. Push the reviewed repository to GitHub, then in Koyeb choose **Create Web Service** and select that GitHub repository.
+2. Choose **Dockerfile** as the builder, with repository root as the build context and `Dockerfile` as the Dockerfile path.
+3. Select the **Free** instance and the **Frankfurt** region.
+4. Configure the service port as `8080` (Koyeb also supplies `PORT` at runtime).
+5. Configure an HTTP health check with path `/actuator/health` and expect status `200`.
+6. Add the environment variables below. Store values marked secret in Koyeb Secrets.
+7. Deploy, wait for Flyway and Spring startup to complete, then verify `/`, `/login`, a direct `/trees/<UUID>` route, and `/actuator/health` on the assigned domain.
+
+Required production configuration:
+
+| Variable | Production value |
+| --- | --- |
+| `SPRING_PROFILES_ACTIVE` | `prod` |
+| `SPRING_DATASOURCE_URL` | Neon JDBC URL ending in `sslmode=require` |
+| `SPRING_DATASOURCE_USERNAME` | Neon role/user; secret |
+| `SPRING_DATASOURCE_PASSWORD` | Neon password; secret |
+| `JWT_SECRET` | unique random secret of at least 32 bytes; secret |
+| `JWT_ISSUER` | `family-tree-api` or a stable custom issuer |
+| `JWT_AUDIENCE` | `family-tree-web` or a stable custom audience |
+| `JWT_ACCESS_TOKEN_TTL` | `10m` |
+| `REFRESH_TOKEN_TTL` | `30d` |
+| `REFRESH_COOKIE_SECURE` | `true` |
+| `FRONTEND_URL` | `https://<KOYEB_DOMAIN>` |
+| `ALLOWED_ORIGINS` | `https://<KOYEB_DOMAIN>` |
+| `MAIL_ENABLED` | `true` when SMTP is configured |
+| `SMTP_HOST`, `SMTP_PORT` | SMTP provider connection |
+| `SMTP_USERNAME`, `SMTP_PASSWORD` | SMTP credentials; secrets |
+| `SMTP_AUTH`, `SMTP_STARTTLS` | normally `true` for hosted SMTP |
+| `MAIL_FROM` | verified sender address |
+
+Optional values are `DB_MAX_POOL_SIZE` (default `5`), `DB_MIN_IDLE` (default `1`), Google/Facebook credentials, and email token TTL overrides. Do not set `VITE_API_URL`; production always calls the same origin.
+
+### 3. Configure social callbacks
+
+OAuth providers are independent and remain disabled when their credentials are absent. To enable one, add its client ID and client secret to Koyeb and register its production callback:
+
+```text
+GOOGLE_CLIENT_ID
+GOOGLE_CLIENT_SECRET
+https://<KOYEB_DOMAIN>/login/oauth2/code/google
+```
+
+```text
+FACEBOOK_CLIENT_ID
+FACEBOOK_CLIENT_SECRET
+https://<KOYEB_DOMAIN>/login/oauth2/code/facebook
+```
+
+Keep `FRONTEND_URL=https://<KOYEB_DOMAIN>` so successful OAuth login returns to `/auth/callback` on the same host. Never place access or refresh tokens in redirect URLs.
+
+### Production limitations
+
+Koyeb's container filesystem is ephemeral. The existing upload implementation stores image files locally, so the `prod` profile disables new photo uploads rather than pretending those files are durable. Existing externally hosted photo URLs in PostgreSQL still render. Add S3-compatible external object storage before enabling production uploads; do not point `PHOTO_STORAGE_PATH` at the Koyeb filesystem.
+
+Transactional email also requires an SMTP provider configured through the variables above; Koyeb and Neon do not supply an email relay. Without it, registration verification and password reset email cannot be delivered. Login rate limiting is not yet implemented and should be added before exposing the application to sustained hostile traffic.
+
+### Build and inspect the production image locally
+
+```bash
+docker build -t family-tree .
+docker run --rm -p 8080:8080 \
+  -e SPRING_PROFILES_ACTIVE=prod \
+  -e SPRING_DATASOURCE_URL='jdbc:postgresql://host.docker.internal:5432/family_tree?sslmode=disable' \
+  -e SPRING_DATASOURCE_USERNAME=family_tree \
+  -e SPRING_DATASOURCE_PASSWORD=family_tree \
+  -e JWT_SECRET='replace-with-at-least-32-random-bytes' \
+  -e FRONTEND_URL='http://localhost:8080' \
+  -e ALLOWED_ORIGINS='http://localhost:8080' \
+  -e REFRESH_COOKIE_SECURE=false \
+  -e MAIL_ENABLED=false \
+  family-tree
+```

@@ -3,6 +3,7 @@ package com.familytree.service
 import com.familytree.domain.FamilyTreeUserAccess
 import com.familytree.domain.TreeVisibility
 import com.familytree.dto.TreeMemberResponse
+import com.familytree.dto.TreePermission
 import com.familytree.dto.TreeSharingRequest
 import com.familytree.dto.TreeSharingResponse
 import com.familytree.exception.BusinessRuleException
@@ -24,45 +25,63 @@ class TreeSharingService(
 ) {
     @Transactional(readOnly = true)
     fun get(treeId: UUID): TreeSharingResponse {
-        val tree = treeService.requireTree(treeId)
+        val tree = treeService.requireOwnedTree(treeId)
         if (tree.ownerUserId == null) throw BusinessRuleException("Sign in before sharing a family tree")
-        return response(treeId, tree.visibility, tree.publicShareId)
+        return response(treeId, tree.visibility, tree.publicShareId, tree.publicCanEdit)
     }
 
     @Transactional
     fun update(treeId: UUID, request: TreeSharingRequest): TreeSharingResponse {
-        val tree = treeService.requireTree(treeId)
+        val tree = treeService.requireOwnedTree(treeId)
         val ownerId = tree.ownerUserId ?: throw BusinessRuleException("Sign in before sharing a family tree")
         accessRepository.deleteByTreeId(treeId)
-        when (request.visibility) {
-            TreeVisibility.PRIVATE -> tree.publicShareId = null
-            TreeVisibility.PUBLIC -> tree.publicShareId = UUID.randomUUID()
-            TreeVisibility.RESTRICTED -> {
-                tree.publicShareId = null
-                request.sharedWithEmails
-                    .map { email ->
-                        userRepository.findByNormalizedEmail(authService.normalizeEmail(email))
-                            ?: throw BusinessRuleException("No account exists for $email")
-                    }
-                    .distinctBy { it.id }
-                    .forEach { user ->
-                        if (user.id == ownerId) throw BusinessRuleException("The owner already has access")
-                        accessRepository.save(FamilyTreeUserAccess(treeId = treeId, userId = user.id))
-                    }
-            }
+        if (request.publicPermission == null) {
+            tree.publicShareId = null
+            tree.publicCanEdit = false
+        } else {
+            if (tree.publicShareId == null) tree.publicShareId = UUID.randomUUID()
+            tree.publicCanEdit = request.publicPermission == TreePermission.EDIT
         }
-        tree.visibility = request.visibility
+        request.members
+            .map { member ->
+                val user = userRepository.findByNormalizedEmail(authService.normalizeEmail(member.email))
+                    ?: throw BusinessRuleException("No account exists for ${member.email}")
+                user to member.permission
+            }
+            .distinctBy { it.first.id }
+            .forEach { (user, permission) ->
+                if (user.id == ownerId) throw BusinessRuleException("The owner already has access")
+                accessRepository.save(FamilyTreeUserAccess(treeId = treeId, userId = user.id, canEdit = permission == TreePermission.EDIT))
+            }
+        tree.visibility = when {
+            tree.publicShareId != null -> TreeVisibility.PUBLIC
+            request.members.isNotEmpty() -> TreeVisibility.RESTRICTED
+            else -> TreeVisibility.PRIVATE
+        }
         tree.updatedAt = Instant.now()
         treeRepository.save(tree)
-        return response(treeId, tree.visibility, tree.publicShareId)
+        return response(treeId, tree.visibility, tree.publicShareId, tree.publicCanEdit)
     }
 
-    private fun response(treeId: UUID, visibility: TreeVisibility, publicShareId: UUID?): TreeSharingResponse {
+    @Transactional
+    fun deletePublicLink(treeId: UUID): TreeSharingResponse {
+        val tree = treeService.requireOwnedTree(treeId)
+        if (tree.ownerUserId == null) throw BusinessRuleException("Sign in before sharing a family tree")
+        tree.publicShareId = null
+        tree.publicCanEdit = false
+        tree.visibility = if (accessRepository.findByTreeIdOrderByCreatedAt(treeId).isEmpty()) TreeVisibility.PRIVATE else TreeVisibility.RESTRICTED
+        tree.updatedAt = Instant.now()
+        treeRepository.save(tree)
+        return response(treeId, tree.visibility, null, false)
+    }
+
+    private fun response(treeId: UUID, visibility: TreeVisibility, publicShareId: UUID?, publicCanEdit: Boolean): TreeSharingResponse {
         val members = accessRepository.findByTreeIdOrderByCreatedAt(treeId).mapNotNull { access ->
             userRepository.findById(access.userId).orElse(null)?.let {
-                TreeMemberResponse(it.id, it.email, it.displayName)
+                TreeMemberResponse(it.id, it.email, it.displayName, if (access.canEdit) TreePermission.EDIT else TreePermission.VIEW)
             }
         }
-        return TreeSharingResponse(visibility, publicShareId, members)
+        val publicPermission = publicShareId?.let { if (publicCanEdit) TreePermission.EDIT else TreePermission.VIEW }
+        return TreeSharingResponse(visibility, publicShareId, publicPermission, members)
     }
 }

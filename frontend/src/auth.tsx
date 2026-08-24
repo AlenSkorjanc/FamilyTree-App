@@ -1,5 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react'
-import { authApi, setAccessToken, setAuthenticationFailureHandler, type AuthUser, type AuthenticationResponse } from './authClient'
+import { authApi, setAccessToken, setAuthenticationFailureHandler, type AuthUser, type AuthenticationResponse, type UserProfileInput } from './authClient'
 
 interface AuthContextValue {
   user: AuthUser | null
@@ -9,6 +9,10 @@ interface AuthContextValue {
   register: (input: { firstName: string; lastName: string; email: string; password: string }) => Promise<void>
   restore: () => Promise<boolean>
   logout: () => Promise<void>
+  logoutAll: () => Promise<void>
+  updateProfile: (input: UserProfileInput, photoFile?: File) => Promise<void>
+  requestPasswordChange: (currentPassword?: string) => Promise<void>
+  deleteProfile: () => Promise<void>
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null)
@@ -49,10 +53,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     isAuthenticated: user !== null,
     isLoading,
     login: async (email, password) => acceptAuthentication(await authApi.login({ email, password })),
-    register: async (input) => acceptAuthentication(await authApi.register(input)),
+    register: async (input) => { await authApi.register(input) },
     restore,
     logout: async () => {
       try { await authApi.logout() } finally { setUser(null) }
+    },
+    logoutAll: async () => {
+      try { await authApi.logoutAll() } finally { setUser(null) }
+    },
+    updateProfile: async (input, photoFile) => {
+      const photoUrl = photoFile ? (await authApi.uploadProfilePhoto(photoFile)).photoUrl : input.photoUrl
+      setUser(await authApi.updateProfile({ ...input, photoUrl }))
+    },
+    requestPasswordChange: async (currentPassword) => { await authApi.requestPasswordChange(currentPassword) },
+    deleteProfile: async () => {
+      try { await authApi.deleteProfile() } finally { setUser(null) }
     },
   }), [acceptAuthentication, isLoading, restore, user])
 

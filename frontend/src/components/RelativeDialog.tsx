@@ -5,6 +5,7 @@ import { Modal } from './Modal'
 import { PersonForm } from './PersonForm'
 import { useI18n } from '../i18n'
 import { PersonAvatar, personGenderTone } from './PersonNode'
+import { CheckIcon, ChevronIcon } from './Icons'
 
 export type RelativeKind = 'parent' | 'child' | 'partner'
 
@@ -114,7 +115,7 @@ export function RelativeDialog({ kind, selectedId, graph, busy, error, onClose, 
                 >
                   <PersonAvatar person={person} className="candidate-avatar" />
                   <span className="candidate-copy"><strong>{fullName(person)}</strong><small>{person.birthDate?.slice(0, 4) ?? t('birthYearUnknown')}</small></span>
-                  <span className="candidate-check" aria-hidden="true">✓</span>
+                  <span className="candidate-check"><CheckIcon /></span>
                 </button>)}
                 {candidates.length === 0 && <p>{t('noCandidates')}</p>}
               </div>
@@ -171,7 +172,7 @@ export function SharedChildrenPicker({ children, selectedIds, onChange }: { chil
       />
       <button type="button" aria-expanded={expanded} aria-controls={detailsId} onClick={() => setExpanded((current) => !current)}>
         <span><strong>{t('shareChildren')}</strong><small>{t('shareChildrenHelp', { count: String(selectedIds.length) })}</small></span>
-        <span className="shared-children-chevron" aria-hidden="true" />
+        <ChevronIcon className="shared-children-chevron" />
       </button>
     </div>
     {expanded && <div id={detailsId} className="shared-children-list">

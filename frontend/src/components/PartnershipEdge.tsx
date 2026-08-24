@@ -18,7 +18,7 @@ export function PartnershipEdge({ id, sourceX, sourceY, targetX, targetY, style,
   const labelX = (sourceX + targetX) / 2
   const labelY = Math.min(sourceY, targetY) - NODE_HEIGHT - 17
   return <>
-    <BaseEdge id={id} path={path} className={`partnership-edge-path ${data?.isCurrent ? 'current' : 'former'}`} style={{ ...style, strokeLinecap: 'round', strokeLinejoin: 'round' }} />
+    <BaseEdge id={id} path={path} className={`partnership-edge-path ${data?.isCurrent ? 'current' : 'former'}`} style={{ ...style, strokeLinecap: 'round', strokeLinejoin: 'round' }} interactionWidth={40} />
     {label && <EdgeLabelRenderer>
       <div
         className={`partnership-edge-label ${data?.isCurrent ? 'current' : ''}`}

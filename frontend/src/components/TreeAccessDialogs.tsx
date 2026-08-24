@@ -1,8 +1,9 @@
 import { useEffect, useState, type FormEvent } from 'react'
 import { api } from '../api'
 import { useI18n } from '../i18n'
-import type { FamilyTree, TreeSharing, TreeVisibility, UUID } from '../types'
+import type { FamilyTree, TreeMemberInput, TreePermission, TreeSharing, UUID } from '../types'
 import { Modal } from './Modal'
+import { PlusIcon, TrashIcon } from './Icons'
 
 export function GuestTreeClaimDialog({ trees, onClose, onClaim }: {
   trees: FamilyTree[]
@@ -38,45 +39,69 @@ export function GuestTreeClaimDialog({ trees, onClose, onClaim }: {
 export function TreeSharingDialog({ tree, onClose }: { tree: FamilyTree; onClose: () => void }) {
   const { t } = useI18n()
   const [settings, setSettings] = useState<TreeSharing | null>(null)
-  const [visibility, setVisibility] = useState<TreeVisibility>('PRIVATE')
-  const [emails, setEmails] = useState('')
+  const [publicPermission, setPublicPermission] = useState<TreePermission | null>(null)
+  const [members, setMembers] = useState<Array<TreeMemberInput & { displayName?: string | null }>>([])
+  const [newEmail, setNewEmail] = useState('')
+  const [newPermission, setNewPermission] = useState<TreePermission>('VIEW')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
+  const applySettings = (value: TreeSharing) => {
+    setSettings(value)
+    setPublicPermission(value.publicPermission)
+    setMembers(value.members.map((member) => ({ email: member.email, permission: member.permission, displayName: member.displayName })))
+  }
+
   useEffect(() => {
-    void api.getSharing(tree.id).then((value) => {
-      setSettings(value); setVisibility(value.visibility); setEmails(value.members.map((member) => member.email).join('\n'))
-    }).catch((caught: unknown) => setError(caught instanceof Error ? caught.message : t('unexpectedError')))
+    void api.getSharing(tree.id).then(applySettings)
+      .catch((caught: unknown) => setError(caught instanceof Error ? caught.message : t('unexpectedError')))
   }, [t, tree.id])
+
+  const addMember = () => {
+    const email = newEmail.trim()
+    if (!email) return
+    setMembers((current) => {
+      const existing = current.findIndex((member) => member.email.toLowerCase() === email.toLowerCase())
+      if (existing < 0) return [...current, { email, permission: newPermission }]
+      return current.map((member, index) => index === existing ? { ...member, permission: newPermission } : member)
+    })
+    setNewEmail('')
+    setNewPermission('VIEW')
+  }
 
   const save = async (event: FormEvent) => {
     event.preventDefault(); setBusy(true); setError(null)
-    const selectedEmails = emails.split(/[\n,;]+/).map((email) => email.trim()).filter(Boolean)
+    const pendingEmail = newEmail.trim()
+    const submittedMembers = pendingEmail
+      ? [...members.filter((member) => member.email.toLowerCase() !== pendingEmail.toLowerCase()), { email: pendingEmail, permission: newPermission }]
+      : members
     try {
-      const value = await api.updateSharing(tree.id, visibility, selectedEmails)
-      setSettings(value); setVisibility(value.visibility); setEmails(value.members.map((member) => member.email).join('\n')); setBusy(false)
+      const value = await api.updateSharing(tree.id, publicPermission, submittedMembers.map(({ email, permission }) => ({ email, permission })))
+      applySettings(value); setNewEmail(''); setNewPermission('VIEW'); setBusy(false)
     } catch (caught) { setError(caught instanceof Error ? caught.message : t('unexpectedError')); setBusy(false) }
+  }
+  const deletePublicLink = async () => {
+    setBusy(true); setError(null)
+    try { applySettings(await api.deletePublicLink(tree.id)) } catch (caught) { setError(caught instanceof Error ? caught.message : t('unexpectedError')) } finally { setBusy(false) }
   }
   const publicUrl = settings?.publicShareId ? `${window.location.origin}/shared/${settings.publicShareId}` : null
 
   return <Modal title={t('shareTree')} onClose={onClose}>
     <form className="tree-access-form" onSubmit={save}>
       <p>{t('shareTreeHelp')}</p>
-      <div className="visibility-options">
-        <VisibilityOption value="PRIVATE" selected={visibility} onSelect={setVisibility} title={t('privateTree')} description={t('privateTreeHelp')} />
-        <VisibilityOption value="RESTRICTED" selected={visibility} onSelect={setVisibility} title={t('restrictedTree')} description={t('restrictedTreeHelp')} />
-        <VisibilityOption value="PUBLIC" selected={visibility} onSelect={setVisibility} title={t('publicTree')} description={t('publicTreeHelp')} />
-      </div>
-      {visibility === 'RESTRICTED' && <label className="shared-emails">{t('allowedUsers')}<textarea rows={4} value={emails} onChange={(event) => setEmails(event.target.value)} placeholder={t('allowedUsersPlaceholder')} /><small>{t('allowedUsersHelp')}</small></label>}
-      {visibility === 'PUBLIC' && publicUrl && <div className="public-link"><label>{t('publicLink')}<input readOnly value={publicUrl} /></label><button type="button" className="quiet" onClick={() => void navigator.clipboard?.writeText(publicUrl)}>{t('copyLink')}</button></div>}
+      <section className="sharing-section">
+        <label className="sharing-channel-toggle"><input type="checkbox" checked={publicPermission !== null} onChange={(event) => setPublicPermission(event.target.checked ? 'VIEW' : null)} /><span><strong>{t('publicTree')}</strong><small>{t('publicTreeHelp')}</small></span></label>
+        {publicPermission && <label className="sharing-permission">{t('linkPermission')}<select value={publicPermission} onChange={(event) => setPublicPermission(event.target.value as TreePermission)}><option value="VIEW">{t('viewPermission')}</option><option value="EDIT">{t('editPermission')}</option></select></label>}
+        {publicPermission && !publicUrl && <small className="sharing-hint">{t('publicLinkCreatedAfterSave')}</small>}
+        {publicUrl && <div className="public-link"><label>{t('publicLink')}<input readOnly value={publicUrl} /></label><div className="public-link-actions"><button type="button" className="quiet" onClick={() => void navigator.clipboard?.writeText(publicUrl)}>{t('copyLink')}</button><button type="button" className="icon-button public-link-delete" disabled={busy} onClick={() => void deletePublicLink()} aria-label={t('deletePublicLink')} title={t('deletePublicLink')}><TrashIcon /></button></div></div>}
+      </section>
+      <section className="sharing-section">
+        <header><div><strong>{t('allowedUsers')}</strong><small>{t('allowedUsersHelp')}</small></div></header>
+        <div className="add-shared-user"><input type="email" value={newEmail} onChange={(event) => setNewEmail(event.target.value)} placeholder={t('allowedUsersPlaceholder')} /><select aria-label={t('userPermission')} value={newPermission} onChange={(event) => setNewPermission(event.target.value as TreePermission)}><option value="VIEW">{t('viewPermission')}</option><option value="EDIT">{t('editPermission')}</option></select><button type="button" className="quiet" disabled={!newEmail.trim()} onClick={addMember}><PlusIcon />{t('addUser')}</button></div>
+        {members.length > 0 && <div className="shared-user-list">{members.map((member) => <div className="shared-user-row" key={member.email.toLowerCase()}><span><strong>{member.displayName || member.email}</strong>{member.displayName && <small>{member.email}</small>}</span><select aria-label={`${t('userPermission')}: ${member.email}`} value={member.permission} onChange={(event) => setMembers((current) => current.map((candidate) => candidate.email === member.email ? { ...candidate, permission: event.target.value as TreePermission } : candidate))}><option value="VIEW">{t('viewPermission')}</option><option value="EDIT">{t('editPermission')}</option></select><button type="button" className="icon-button" onClick={() => setMembers((current) => current.filter((candidate) => candidate.email !== member.email))} aria-label={`${t('removeUser')}: ${member.email}`}><TrashIcon /></button></div>)}</div>}
+      </section>
       {error && <p className="form-error">{error}</p>}
       <footer><button type="button" className="quiet" onClick={onClose}>{t('close')}</button><button className="primary" disabled={busy || settings === null}>{busy ? t('saving') : t('saveSharing')}</button></footer>
     </form>
   </Modal>
-}
-
-function VisibilityOption({ value, selected, onSelect, title, description }: {
-  value: TreeVisibility; selected: TreeVisibility; onSelect: (value: TreeVisibility) => void; title: string; description: string
-}) {
-  return <label className={selected === value ? 'selected' : ''}><input type="radio" name="visibility" value={value} checked={selected === value} onChange={() => onSelect(value)} /><span><strong>{title}</strong><small>{description}</small></span></label>
 }

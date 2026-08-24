@@ -1,4 +1,4 @@
-import type { FamilyGraph, FamilyTree, ParentChildRelationship, Partnership, PartnershipType, Person, PersonInput, RelationshipType, TreeSharing, TreeVisibility, UUID } from './types'
+import type { FamilyGraph, FamilyTree, ParentChildRelationship, Partnership, PartnershipType, Person, PersonInput, RelationshipType, TreeMemberInput, TreePermission, TreeSharing, UUID } from './types'
 import { apiBaseUrl, authenticatedRequest as request, publicRequest } from './authClient'
 
 export const api = {
@@ -39,7 +39,8 @@ export const api = {
   previewGuestTrees: (treeIds: UUID[]) => request<FamilyTree[]>('/api/trees/claim-preview', { method: 'POST', body: JSON.stringify({ treeIds }) }),
   claimGuestTrees: (treeIds: UUID[]) => request<FamilyTree[]>('/api/trees/claim', { method: 'POST', body: JSON.stringify({ treeIds }) }),
   getSharing: (treeId: UUID) => request<TreeSharing>(`/api/trees/${treeId}/sharing`),
-  updateSharing: (treeId: UUID, visibility: TreeVisibility, sharedWithEmails: string[]) => request<TreeSharing>(`/api/trees/${treeId}/sharing`, { method: 'PUT', body: JSON.stringify({ visibility, sharedWithEmails }) }),
+  updateSharing: (treeId: UUID, publicPermission: TreePermission | null, members: TreeMemberInput[]) => request<TreeSharing>(`/api/trees/${treeId}/sharing`, { method: 'PUT', body: JSON.stringify({ publicPermission, members }) }),
+  deletePublicLink: (treeId: UUID) => request<TreeSharing>(`/api/trees/${treeId}/sharing/public-link`, { method: 'DELETE' }),
 }
 
 const GUEST_TREE_IDS_KEY = 'family-tree-guest-tree-ids'
