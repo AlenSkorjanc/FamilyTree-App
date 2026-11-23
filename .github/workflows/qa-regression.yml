@@ -76,7 +76,7 @@ jobs:
             -e SPRING_DATASOURCE_PASSWORD=family_tree \
             -e JWT_SECRET='qa-only-not-production-a59af21797c64e24994a88b4714dc4f28baa' \
             -e FRONTEND_URL='http://localhost:8080' \
-            -e ALLOWED_ORIGINS='http://localhost:8080' \
+            -e ALLOWED_ORIGINS='http://localhost:8080,http://127.0.0.1:8080' \
             -e REFRESH_COOKIE_SECURE=false \
             -e PHOTO_UPLOADS_ENABLED=false \
             -e MAIL_ENABLED=true \
