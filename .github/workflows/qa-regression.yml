@@ -1,0 +1,113 @@
+name: QA regression gate (isolated branch)
+on:
+  push:
+    branches: [qa/regression-2026-11-23]
+  pull_request:
+    branches: [main]
+permissions:
+  contents: read
+jobs:
+  frontend:
+    name: Frontend unit tests and production build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Install frontend packages
+        run: npm ci
+        working-directory: frontend
+      - name: Run Vitest
+        run: npm test -- --reporter=verbose
+        working-directory: frontend
+      - name: Build frontend
+        run: npm run build
+        working-directory: frontend
+      - name: Dependency audit
+        run: npm audit --audit-level=high
+        working-directory: frontend
+        continue-on-error: true
+
+  backend:
+    name: Backend PostgreSQL integration tests and build
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - name: Backend tests using disposable Testcontainers PostgreSQL
+        run: chmod +x ./gradlew && ./gradlew test --no-daemon --stacktrace
+        working-directory: backend
+      - name: Backend build
+        run: ./gradlew build --no-daemon --stacktrace
+        working-directory: backend
+
+  docker-smoke:
+    name: Production Docker and disposable HTTP smoke tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build production image
+        run: docker build -t familytree-qa:check .
+      - name: Start disposable PostgreSQL and Mailpit
+        run: docker compose up -d postgres mailpit
+      - name: Wait for PostgreSQL and Mailpit
+        run: |
+          for i in $(seq 1 50); do
+            docker compose exec -T postgres pg_isready -U family_tree -d family_tree && break || sleep 2
+          done
+          for i in $(seq 1 30); do
+            curl -fsS http://localhost:8025/api/v1/info >/dev/null && break || sleep 2
+          done
+      - name: Start production container against disposable services
+        run: |
+          docker run -d --name familytree-qa-web --network host \
+            -e SPRING_PROFILES_ACTIVE=prod \
+            -e SPRING_DATASOURCE_URL='jdbc:postgresql://127.0.0.1:5432/family_tree' \
+            -e SPRING_DATASOURCE_USERNAME=family_tree \
+            -e SPRING_DATASOURCE_PASSWORD=family_tree \
+            -e JWT_SECRET='qa-only-not-production-a59af21797c64e24994a88b4714dc4f28baa' \
+            -e FRONTEND_URL='http://localhost:8080' \
+            -e ALLOWED_ORIGINS='http://localhost:8080' \
+            -e REFRESH_COOKIE_SECURE=false \
+            -e PHOTO_UPLOADS_ENABLED=false \
+            -e MAIL_ENABLED=true \
+            -e MAIL_FROM='qa@example.test' \
+            -e SMTP_HOST=127.0.0.1 \
+            -e SMTP_PORT=1025 \
+            familytree-qa:check
+          for i in $(seq 1 100); do
+            if curl -fsS http://localhost:8080/actuator/health > /dev/null; then exit 0; fi
+            sleep 2
+          done
+          echo 'Production app did not become healthy'
+          docker logs --tail 100 familytree-qa-web
+          exit 1
+      - name: HTTP API and email integration smoke suite
+        run: python3 qa/http_smoke.py
+      - name: Browser and responsive smoke suite
+        run: |
+          cd frontend
+          npm ci
+          npm install --no-save playwright@1.57.0
+          npx playwright install --with-deps chromium
+          cd ..
+          node qa/browser_smoke.mjs
+      - name: Collect container output
+        if: always()
+        run: |
+          docker logs --tail 80 familytree-qa-web || true
+          docker compose logs --tail 20 postgres mailpit || true
+      - name: Clean disposable containers
+        if: always()
+        run: |
+          docker rm -f familytree-qa-web || true
+          docker compose down -v || true
