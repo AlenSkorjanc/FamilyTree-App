@@ -12,13 +12,13 @@ import org.springframework.web.multipart.MaxUploadSizeExceededException
 @RestControllerAdvice
 class ApiExceptionHandler {
     @ExceptionHandler(NotFoundException::class)
-    fun notFound(ex: NotFoundException, request: HttpServletRequest) = response(HttpStatus.NOT_FOUND, "NOT_FOUND", ex.message, request)
+    fun notFound(ex: NotFoundException, request: HttpServletRequest) = response(HttpStatus.NOT_FOUND, ex.code, ex.message, request)
 
     @ExceptionHandler(ConflictException::class)
-    fun conflict(ex: ConflictException, request: HttpServletRequest) = response(HttpStatus.CONFLICT, "CONFLICT", ex.message, request)
+    fun conflict(ex: ConflictException, request: HttpServletRequest) = response(HttpStatus.CONFLICT, ex.code, ex.message, request)
 
     @ExceptionHandler(BusinessRuleException::class)
-    fun invalid(ex: BusinessRuleException, request: HttpServletRequest) = response(HttpStatus.UNPROCESSABLE_ENTITY, "BUSINESS_RULE", ex.message, request)
+    fun invalid(ex: BusinessRuleException, request: HttpServletRequest) = response(HttpStatus.UNPROCESSABLE_ENTITY, ex.code, ex.message, request)
 
     @ExceptionHandler(AuthenticationFailedException::class, AuthenticationRequiredException::class)
     fun unauthorized(ex: RuntimeException, request: HttpServletRequest) = response(HttpStatus.UNAUTHORIZED, "UNAUTHORIZED", ex.message, request)

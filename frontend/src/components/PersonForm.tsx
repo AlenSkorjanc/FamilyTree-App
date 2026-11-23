@@ -17,7 +17,8 @@ export function PersonForm({ person, initialValues, currentPhotoUrl, emailField,
   const { t } = useI18n()
   const [photoFile, setPhotoFile] = useState<File>()
   const [additionalDetailsOpen, setAdditionalDetailsOpen] = useState(() => Boolean(person?.middleName || person?.maidenName || person?.deathDate || person?.deathPlace))
-  const { register, control, handleSubmit, formState: { errors } } = useForm<PersonInput>({ defaultValues: person ?? { ...emptyValues, ...initialValues } })
+  const { register, control, handleSubmit, watch, formState: { errors } } = useForm<PersonInput>({ defaultValues: person ?? { ...emptyValues, ...initialValues } })
+  const birthDate = watch('birthDate')
   const normalize = (input: PersonInput): PersonInput => Object.fromEntries(
     Object.entries(input).map(([key, value]) => [key, value === '' ? null : value]),
   ) as unknown as PersonInput
@@ -44,7 +45,7 @@ export function PersonForm({ person, initialValues, currentPhotoUrl, emailField,
         {additionalDetailsOpen && <div className="additional-details-fields full">
           <label>{t('middleName')}<input {...register('middleName')} /></label>
           <label>{t('maidenName')}<input {...register('maidenName')} /></label>
-          <div className="date-form-field"><label htmlFor="person-death-date">{t('deathDate')}</label><Controller name="deathDate" control={control} render={({ field }) => <DatePicker id="person-death-date" label={t('deathDate')} value={field.value} onChange={field.onChange} />} /></div>
+          <div className="date-form-field"><label htmlFor="person-death-date">{t('deathDate')}</label><Controller name="deathDate" control={control} rules={{ validate: (value) => !value || !birthDate || value >= birthDate || t('invalidPersonDatesError') }} render={({ field }) => <DatePicker id="person-death-date" label={t('deathDate')} value={field.value} onChange={field.onChange} />} />{errors.deathDate && <em>{errors.deathDate.message}</em>}</div>
           <label>{t('deathPlace')}<input {...register('deathPlace')} /></label>
         </div>}
         <label className="full photo-upload">{t('photo')}

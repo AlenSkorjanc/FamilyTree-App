@@ -1,12 +1,26 @@
 import type { FamilyGraph, UUID } from '../types'
 import type { PersonFlowNode } from './PersonNode'
-import { NODE_HEIGHT } from './familyGraphLayout'
+import { NODE_HEIGHT, NODE_WIDTH } from './familyGraphLayout'
 import { sharedFamilyEdgeId, sharedFamilyTrunkEdgeId, sharedParentFamilies } from './familyGraphEdges'
 
 export function mobileFocusedViewport(nodeCenter: { x: number; y: number }, viewportWidth: number, viewportHeight: number) {
   const zoom = 1
   const visibleAreaCenterY = Math.max(NODE_HEIGHT / 2 + 12, viewportHeight / 4)
   return { x: viewportWidth / 2 - nodeCenter.x * zoom, y: visibleAreaCenterY - nodeCenter.y * zoom, zoom }
+}
+
+export function focusedViewportLeftOfDetails(
+  nodeCenter: { x: number; y: number },
+  visibleWidth: number,
+  viewportHeight: number,
+) {
+  const horizontalPadding = 24
+  const zoom = Math.min(1.25, Math.max(0.08, (visibleWidth - horizontalPadding * 2) / NODE_WIDTH))
+  return {
+    x: visibleWidth / 2 - nodeCenter.x * zoom,
+    y: viewportHeight / 2 - nodeCenter.y * zoom,
+    zoom,
+  }
 }
 
 export function selectPersonOccurrences(nodes: PersonFlowNode[], selectedPersonIds: readonly UUID[], hideQuickAddForSelection = false): PersonFlowNode[] {

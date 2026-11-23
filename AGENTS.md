@@ -29,6 +29,43 @@
 - Never edit an already-released migration in an established environment.
 - Preserve constraints, indexes, and the absence of artificial person/generation limits.
 
+## Relationship integrity
+
+- Parent-child edges form a directed acyclic graph. A person can never be their own ancestor or descendant.
+- Every parent-child insert or update must flow through the centralized relationship service and perform persisted, tree-scoped cycle validation.
+- Ancestry mutations must serialize on the relevant `FamilyTree`; never use a global application lock or permit concurrent checks to race.
+- Graph traversal is always scoped to one tree. React Flow positions, layout rows, dates, and gender are never authoritative genealogy data.
+- Derive grandparents, siblings, and other extended relations from parent-child edges instead of persisting redundant relationship types.
+- Do not impose a two-parent limit and do not use gender to validate parenthood.
+- Keep social/legal partnership policy separate from ancestry DAG integrity; unusual partnerships must not corrupt or redefine ancestry.
+- Future person merges and bulk/GEDCOM imports must validate the complete proposed graph and preserve DAG integrity transactionally.
+
+## Family graph layout integrity
+
+- Canonical parent-child data remains a DAG; never use visual copies to conceal an ancestry cycle.
+- Every rendered parent-child edge flows strictly downward, and every rendered partnership remains horizontal.
+- Never move a canonical ancestry occurrence across generations merely to align a partnership.
+- When one Person is required in incompatible ranks or family contexts, create deterministic visual copy/alias occurrences that all retain the canonical Person ID.
+- Visual copies are frontend layout objects only. Never persist them as Person records or create fake relationships for layout purposes.
+- Search, details, selection, editing, relationship actions, and deletion always operate on canonical Person identity for primary and copy occurrences alike.
+- A Person may have multiple copies when topology requires them; reuse occurrences with compatible rank and context to avoid copy explosion.
+- Preserve immediate current-partner adjacency when expanding occurrences and arranging partner groups.
+- Expand canonical graph data into a semantically valid occurrence graph before ELK layout; never use upward or looping routes to disguise invalid ranks.
+- Generate occurrence IDs and copy choices deterministically from stable relationship, partnership, rank, and canonical-person identifiers.
+- A canonical Person does not require a permanently rendered primary occurrence; retain only occurrences required by the current visual topology.
+- After assigning real relationship edges, prune every redundant degree-zero occurrence belonging to a Person with displayed relationships before ELK layout.
+- Never create fake primary-to-copy or copy-to-copy relationship edges to preserve visual connectivity.
+- Primary and copy occurrences are equal visual representations of one canonical Person; canonical-person lookup must resolve search, selection, focus, and editing to a currently visible occurrence.
+- Prune unused family/helper layout objects before ELK and ensure they cannot influence spacing or fit-view bounds.
+- Minimize occurrence count after satisfying downward ancestry, horizontal partnership, and current-partner adjacency constraints.
+- Keep each canonical connected family component visually connected whenever compatible occurrences allow it; never allow upward parent-child edges to repair a split layout.
+- Treat the render graph as a connected unfolding of each canonical family component; every complete canonical component must produce exactly one rendered component.
+- Build preferred vertical ranks from the parent-child DAG first. Unequal ancestry path depth alone never justifies a copy.
+- Create a copy only through the real relationship that requires it and with another endpoint already anchored in the rendered component; copies never become independent roots.
+- Prefer an existing compatible connected occurrence over creating a copy, and never inherit copy status or automatically duplicate a copy's parents, children, or wider branch.
+- Assign every displayed canonical relationship to exactly one occurrence pair or family route.
+- Validate rendered connectivity as a hard precondition before ELK; never repair it with fake same-person edges.
+
 ## Production deployment
 
 - Production is one Spring Boot container that serves the compiled React application; do not add a separate frontend server or deployment.
@@ -54,7 +91,7 @@
 ## Tests and commands
 
 - Backend: `cd backend && ./gradlew test` and `./gradlew build`.
-- Frontend: `cd frontend && npm run build`, followed by functional browser/API verification.
+- Frontend: `cd frontend && npm test` and `npm run build`, followed by functional browser/API verification.
 - Database: `docker compose up -d` from the monorepo root.
 - Run relevant tests after every change and exercise cross-stack changes against PostgreSQL.
 - Do not commit generated builds, dependencies, `.env`, secrets, or IDE files.

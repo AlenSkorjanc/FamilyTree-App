@@ -18,6 +18,7 @@ import { GuestTreeClaimDialog, TreeSharingDialog } from './components/TreeAccess
 import { AppLogo } from './components/AppLogo'
 import { AccountMenu } from './components/AccountMenu'
 import { PlusIcon } from './components/Icons'
+import { ApiRequestError } from './authClient'
 
 export default function App({ publicShareId }: { publicShareId?: UUID }) {
   const { t } = useI18n()
@@ -93,7 +94,21 @@ export default function App({ publicShareId }: { publicShareId?: UUID }) {
   }
   const run = async (operation: () => Promise<unknown>, after?: () => void) => {
     setError(null)
-    try { await operation(); await refresh(); after?.() } catch (caught) { setError(caught instanceof Error ? caught.message : t('unexpectedError')) }
+    try {
+      await operation(); await refresh(); after?.()
+    } catch (caught) {
+      const integrityMessages: Record<string, string> = {
+        ANCESTRY_CYCLE: t('ancestryCycleError'),
+        SELF_PARENT_RELATIONSHIP: t('selfParentError'),
+        DUPLICATE_PARENT_CHILD_RELATIONSHIP: t('duplicateParentChildError'),
+        INVALID_BIOLOGICAL_PARENT_DATES: t('biologicalParentDatesError'),
+        SELF_PARTNERSHIP: t('selfPartnershipError'),
+        DUPLICATE_PARTNERSHIP: t('duplicatePartnershipError'),
+        INVALID_PARTNERSHIP_DATES: t('invalidPartnershipDatesError'),
+        INVALID_PERSON_DATES: t('invalidPersonDatesError'),
+      }
+      setError(caught instanceof ApiRequestError ? integrityMessages[caught.code] ?? caught.message : caught instanceof Error ? caught.message : t('unexpectedError'))
+    }
   }
   const focusPerson = (id: UUID) => {
     setPersonModal(null)

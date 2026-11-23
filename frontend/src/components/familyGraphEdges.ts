@@ -10,14 +10,19 @@ export interface SharedParentFamily {
   children: SharedFamilyChild[]
 }
 
-export function sharedParentFamilies(graph: FamilyGraph): SharedParentFamily[] {
+export function sharedParentFamilies(
+  graph: FamilyGraph,
+  partnershipEndpoints?: Map<UUID, { sourceId: string; targetId: string }>,
+): SharedParentFamily[] {
   const relationshipsByParent = new Map<UUID, ParentChildRelationship[]>()
-  graph.parentChildRelationships.forEach((relationship) => {
+  ;[...graph.parentChildRelationships].sort((first, second) => first.id.localeCompare(second.id)).forEach((relationship) => {
     relationshipsByParent.set(relationship.parentId, [...(relationshipsByParent.get(relationship.parentId) ?? []), relationship])
   })
   const claimedRelationshipIds = new Set<UUID>()
 
-  return graph.partnerships.flatMap((partnership) => {
+  return [...graph.partnerships].sort((first, second) => first.id.localeCompare(second.id)).flatMap((partnership) => {
+    const endpoints = partnershipEndpoints?.get(partnership.id)
+    if (endpoints && (endpoints.sourceId !== partnership.person1Id || endpoints.targetId !== partnership.person2Id)) return []
     const secondParentRelationships = new Map(
       (relationshipsByParent.get(partnership.person2Id) ?? []).map((relationship) => [relationship.childId, relationship]),
     )

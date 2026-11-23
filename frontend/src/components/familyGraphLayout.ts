@@ -1,4 +1,4 @@
-import type { FamilyGraph, PartnershipType, UUID } from '../types'
+import type { PartnershipType } from '../types'
 
 export const NODE_WIDTH = 156
 export const NODE_HEIGHT = 190
@@ -11,16 +11,6 @@ const GENERATION_GAP = 110
 const DENSE_CONNECTION_THRESHOLD = 4
 const CONNECTION_GAP_STEP = 8
 const MAX_CONNECTION_GAP_EXTRA = 80
-
-export interface PersonAlias {
-  id: string
-  personId: UUID
-}
-
-export interface VisualGraphOccurrences {
-  aliases: PersonAlias[]
-  relationshipTargets: Map<UUID, string>
-}
 
 export interface LayoutPartnership {
   id: string
@@ -46,58 +36,6 @@ export function partnershipRouteY(nodeBottomY: number, routeLevel: number): numb
   return nodeBottomY + PARTNERSHIP_ROUTE_OFFSET + routeLevel * PARTNERSHIP_ROUTE_LEVEL_GAP
 }
 
-export function findVisualGraphOccurrences(graph: FamilyGraph): VisualGraphOccurrences {
-  const parent = new Map(graph.people.map((person) => [person.id, person.id]))
-  const find = (id: UUID): UUID => {
-    const direct = parent.get(id) ?? id
-    if (direct === id) return id
-    const root = find(direct)
-    parent.set(id, root)
-    return root
-  }
-  const union = (first: UUID, second: UUID) => {
-    const firstRoot = find(first)
-    const secondRoot = find(second)
-    if (firstRoot !== secondRoot) parent.set(secondRoot, firstRoot)
-  }
-  graph.partnerships.forEach((partnership) => union(partnership.person1Id, partnership.person2Id))
-
-  const componentIds = new Set(graph.people.map((person) => find(person.id)))
-  const outgoing = new Map<UUID, Set<UUID>>()
-  const indegree = new Map([...componentIds].map((id) => [id, 0]))
-  graph.parentChildRelationships.forEach((relationship) => {
-    const from = find(relationship.parentId)
-    const to = find(relationship.childId)
-    if (from === to || outgoing.get(from)?.has(to)) return
-    outgoing.set(from, new Set([...(outgoing.get(from) ?? []), to]))
-    indegree.set(to, (indegree.get(to) ?? 0) + 1)
-  })
-
-  const rank = new Map([...componentIds].map((id) => [id, 0]))
-  const pending = [...componentIds].filter((id) => indegree.get(id) === 0)
-  for (let index = 0; index < pending.length; index += 1) {
-    const componentId = pending[index]
-    for (const child of outgoing.get(componentId) ?? []) {
-      rank.set(child, Math.max(rank.get(child) ?? 0, (rank.get(componentId) ?? 0) + 1))
-      indegree.set(child, (indegree.get(child) ?? 1) - 1)
-      if (indegree.get(child) === 0) pending.push(child)
-    }
-  }
-
-  const aliasesById = new Map<string, PersonAlias>()
-  const relationshipTargets = new Map<UUID, string>()
-  graph.parentChildRelationships.forEach((relationship) => {
-    const parentRank = rank.get(find(relationship.parentId)) ?? 0
-    const childRank = rank.get(find(relationship.childId)) ?? 0
-    if (childRank <= parentRank + 1) return
-    const aliasId = `alias:${relationship.childId}:generation:${parentRank + 1}`
-    aliasesById.set(aliasId, { id: aliasId, personId: relationship.childId })
-    relationshipTargets.set(relationship.id, aliasId)
-  })
-
-  return { aliases: [...aliasesById.values()], relationshipTargets }
-}
-
 export function arrangeFamilyTreePositions(
   suggested: Map<string, { x: number; y: number }>,
   personIds: string[],
@@ -105,6 +43,7 @@ export function arrangeFamilyTreePositions(
   partnerships: LayoutPartnership[],
   genders: Map<string, string | null> = new Map(),
   birthDates: Map<string, string | null> = new Map(),
+  occurrenceRanks?: Map<string, number>,
 ) {
   const parent = new Map(personIds.map((id) => [id, id]))
   const find = (id: string): string => {
@@ -141,16 +80,21 @@ export function arrangeFamilyTreePositions(
     indegree.set(to, (indegree.get(to) ?? 0) + 1)
   })
 
-  const rank = new Map([...members.keys()].map((root) => [root, 0]))
+  const derivedRank = new Map([...members.keys()].map((root) => [root, 0]))
   const pending = [...members.keys()].filter((root) => indegree.get(root) === 0)
   for (let index = 0; index < pending.length; index += 1) {
     const root = pending[index]
     for (const child of outgoing.get(root) ?? []) {
-      rank.set(child, Math.max(rank.get(child) ?? 0, (rank.get(root) ?? 0) + 1))
+      derivedRank.set(child, Math.max(derivedRank.get(child) ?? 0, (derivedRank.get(root) ?? 0) + 1))
       indegree.set(child, (indegree.get(child) ?? 1) - 1)
       if (indegree.get(child) === 0) pending.push(child)
     }
   }
+  const rank = occurrenceRanks ? new Map([...members.entries()].map(([root, ids]) => {
+    const assignedRanks = [...new Set(ids.map((id) => occurrenceRanks.get(id)).filter((value): value is number => value !== undefined))]
+    if (assignedRanks.length !== 1) throw new Error(`Partner group ${root} has incompatible visual ranks: ${assignedRanks.join(', ')}`)
+    return [root, assignedRanks[0]]
+  })) : derivedRank
 
   const suggestedX = (root: string) => {
     const group = members.get(root) ?? []

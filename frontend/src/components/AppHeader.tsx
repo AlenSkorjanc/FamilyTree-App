@@ -80,7 +80,7 @@ export function AppHeader({ treeId, trees, treeName, onOpenTree, onSelectPerson,
           if (focusedElement instanceof HTMLElement && focusedElement.closest('.global-search')) restoreMobileViewport()
         }}
       >
-        <div className="menu-heading"><strong>{t('menu')}</strong><small>{treeName}</small></div>
+        <div className="menu-heading"><strong>{t('menu')}</strong></div>
         <div className="tree-switcher">
           <label className="menu-tree-select">
             <span className="menu-control-label">{t('treeName')}</span>

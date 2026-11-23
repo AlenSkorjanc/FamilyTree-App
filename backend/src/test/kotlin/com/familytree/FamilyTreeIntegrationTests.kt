@@ -1,6 +1,7 @@
 package com.familytree
 
 import com.familytree.domain.PartnershipType
+import com.familytree.domain.RelationshipType
 import com.familytree.domain.AppUser
 import com.familytree.dto.CreateTreeRequest
 import com.familytree.dto.CurrentPartnerRequest
@@ -35,6 +36,11 @@ import org.springframework.security.oauth2.server.resource.authentication.JwtAut
 import org.testcontainers.junit.jupiter.Container
 import org.testcontainers.junit.jupiter.Testcontainers
 import org.testcontainers.postgresql.PostgreSQLContainer
+import java.time.LocalDate
+import java.util.concurrent.Callable
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
 
 @SpringBootTest
 @Testcontainers
@@ -111,32 +117,35 @@ class FamilyTreeIntegrationTests @Autowired constructor(
         relationships.createParentChild(tree.id, ParentChildRequest(grandparent.id, parent.id))
         relationships.createParentChild(tree.id, ParentChildRequest(parent.id, child.id))
         assertEquals(2, relationships.listParentChild(tree.id).size)
-        assertThrows<ConflictException> { relationships.createParentChild(tree.id, ParentChildRequest(parent.id, child.id)) }
-        assertThrows<BusinessRuleException> { relationships.createParentChild(tree.id, ParentChildRequest(child.id, child.id)) }
-        assertThrows<BusinessRuleException> { relationships.createParentChild(tree.id, ParentChildRequest(child.id, grandparent.id)) }
-        assertThrows<BusinessRuleException> { relationships.createPartnership(tree.id, PartnershipRequest(grandparent.id, child.id)) }
+        assertEquals("DUPLICATE_PARENT_CHILD_RELATIONSHIP", assertThrows<ConflictException> {
+            relationships.createParentChild(tree.id, ParentChildRequest(parent.id, child.id))
+        }.code)
+        val changedType = relationships.createParentChild(tree.id, ParentChildRequest(parent.id, child.id, RelationshipType.ADOPTIVE))
+        assertEquals(RelationshipType.ADOPTIVE, changedType.relationshipType)
+        assertEquals(2, relationships.listParentChild(tree.id).size)
+        assertEquals("SELF_PARENT_RELATIONSHIP", assertThrows<BusinessRuleException> {
+            relationships.createParentChild(tree.id, ParentChildRequest(child.id, child.id))
+        }.code)
+        assertEquals("ANCESTRY_CYCLE", assertThrows<BusinessRuleException> {
+            relationships.createParentChild(tree.id, ParentChildRequest(child.id, grandparent.id))
+        }.code)
+        assertEquals(2, relationships.listParentChild(tree.id).size)
     }
 
     @Test
-    fun `a child can have at most two parents`() {
-        val tree = trees.create(CreateTreeRequest("Two parents"))
+    fun `a child can have more than two parents of any gender and relationship type`() {
+        val tree = trees.create(CreateTreeRequest("Multiple parents"))
         val firstParent = people.create(tree.id, PersonRequest("First parent"))
         val secondParent = people.create(tree.id, PersonRequest("Second parent"))
         val thirdParent = people.create(tree.id, PersonRequest("Third parent"))
         val child = people.create(tree.id, PersonRequest("Child"))
 
         relationships.createParentChild(tree.id, ParentChildRequest(firstParent.id, child.id))
-        val secondRelationship = relationships.createParentChild(tree.id, ParentChildRequest(secondParent.id, child.id))
+        relationships.createParentChild(tree.id, ParentChildRequest(secondParent.id, child.id, RelationshipType.ADOPTIVE))
+        relationships.createParentChild(tree.id, ParentChildRequest(thirdParent.id, child.id, RelationshipType.STEP))
 
-        val error = assertThrows<BusinessRuleException> {
-            relationships.createParentChild(tree.id, ParentChildRequest(thirdParent.id, child.id))
-        }
-        assertEquals("A child can have at most two parents", error.message)
-        assertEquals(2, relationships.listParentChild(tree.id).count { it.childId == child.id })
-
-        relationships.deleteParentChild(tree.id, secondRelationship.id)
-        relationships.createParentChild(tree.id, ParentChildRequest(thirdParent.id, child.id))
-        assertEquals(2, relationships.listParentChild(tree.id).count { it.childId == child.id })
+        assertEquals(3, relationships.listParentChild(tree.id).count { it.childId == child.id })
+        assertEquals(3, graph.get(tree.id).parentChildRelationships.count { it.childId == child.id })
     }
 
     @Test
@@ -144,10 +153,31 @@ class FamilyTreeIntegrationTests @Autowired constructor(
         val tree = trees.create(CreateTreeRequest("Test"))
         val one = people.create(tree.id, PersonRequest("One"))
         val two = people.create(tree.id, PersonRequest("Two"))
+        assertEquals("SELF_PARTNERSHIP", assertThrows<BusinessRuleException> {
+            relationships.createPartnership(tree.id, PartnershipRequest(one.id, one.id))
+        }.code)
         relationships.createPartnership(tree.id, PartnershipRequest(one.id, two.id, PartnershipType.MARRIAGE))
-        assertThrows<ConflictException> {
-            relationships.createPartnership(tree.id, PartnershipRequest(two.id, one.id, PartnershipType.OTHER))
-        }
+        assertEquals("DUPLICATE_PARTNERSHIP", assertThrows<ConflictException> {
+            relationships.createPartnership(tree.id, PartnershipRequest(two.id, one.id, PartnershipType.MARRIAGE))
+        }.code)
+        relationships.createPartnership(tree.id, PartnershipRequest(two.id, one.id, PartnershipType.OTHER))
+    }
+
+    @Test
+    fun `same people can have distinct historical partnership periods`() {
+        val tree = trees.create(CreateTreeRequest("Historical partnerships"))
+        val one = people.create(tree.id, PersonRequest("One"))
+        val two = people.create(tree.id, PersonRequest("Two"))
+        val first = PartnershipRequest(one.id, two.id, PartnershipType.MARRIAGE, LocalDate.parse("2000-01-01"), LocalDate.parse("2005-12-31"))
+        val second = PartnershipRequest(one.id, two.id, PartnershipType.MARRIAGE, LocalDate.parse("2010-01-01"), LocalDate.parse("2018-12-31"))
+
+        relationships.createPartnership(tree.id, first)
+        relationships.createPartnership(tree.id, second)
+
+        assertEquals(2, relationships.listPartnerships(tree.id, one.id).size)
+        assertEquals("DUPLICATE_PARTNERSHIP", assertThrows<ConflictException> {
+            relationships.createPartnership(tree.id, first)
+        }.code)
     }
 
     @Test
@@ -242,25 +272,14 @@ class FamilyTreeIntegrationTests @Autowired constructor(
     }
 
     @Test
-    fun `partners cannot also become parent and child`() {
+    fun `partnership policy remains separate from ancestry integrity`() {
         val tree = trees.create(CreateTreeRequest("Test"))
         val one = people.create(tree.id, PersonRequest("One"))
         val two = people.create(tree.id, PersonRequest("Two"))
         relationships.createPartnership(tree.id, PartnershipRequest(one.id, two.id))
-        assertThrows<BusinessRuleException> {
-            relationships.createParentChild(tree.id, ParentChildRequest(one.id, two.id))
-        }
-    }
-
-    @Test
-    fun `parent and child cannot also become partners`() {
-        val tree = trees.create(CreateTreeRequest("Test"))
-        val parent = people.create(tree.id, PersonRequest("Parent"))
-        val child = people.create(tree.id, PersonRequest("Child"))
-        relationships.createParentChild(tree.id, ParentChildRequest(parent.id, child.id))
-        assertThrows<BusinessRuleException> {
-            relationships.createPartnership(tree.id, PartnershipRequest(parent.id, child.id))
-        }
+        relationships.createParentChild(tree.id, ParentChildRequest(one.id, two.id))
+        assertEquals(1, relationships.listPartnerships(tree.id).size)
+        assertEquals(1, relationships.listParentChild(tree.id).size)
     }
 
     @Test
@@ -269,8 +288,110 @@ class FamilyTreeIntegrationTests @Autowired constructor(
         val secondTree = trees.create(CreateTreeRequest("Two"))
         val first = people.create(firstTree.id, PersonRequest("First"))
         val second = people.create(secondTree.id, PersonRequest("Second"))
-        assertThrows<NotFoundException> { relationships.createParentChild(firstTree.id, ParentChildRequest(first.id, second.id)) }
-        assertThrows<NotFoundException> { relationships.createPartnership(firstTree.id, PartnershipRequest(first.id, second.id)) }
+        assertEquals("PERSON_NOT_IN_TREE", assertThrows<NotFoundException> {
+            relationships.createParentChild(firstTree.id, ParentChildRequest(first.id, second.id))
+        }.code)
+        assertEquals("PERSON_NOT_IN_TREE", assertThrows<NotFoundException> {
+            relationships.createPartnership(firstTree.id, PartnershipRequest(first.id, second.id))
+        }.code)
+    }
+
+    @Test
+    fun `arbitrary depth cycles are rejected while valid branches remain allowed`() {
+        val tree = trees.create(CreateTreeRequest("DAG"))
+        val peter = people.create(tree.id, PersonRequest("Peter"))
+        val john = people.create(tree.id, PersonRequest("John"))
+        val mark = people.create(tree.id, PersonRequest("Mark"))
+        val david = people.create(tree.id, PersonRequest("David"))
+        val fifth = people.create(tree.id, PersonRequest("Fifth"))
+        val anna = people.create(tree.id, PersonRequest("Anna"))
+        val sarah = people.create(tree.id, PersonRequest("Sarah"))
+        val newPerson = people.create(tree.id, PersonRequest("New person"))
+
+        relationships.createParentChild(tree.id, ParentChildRequest(peter.id, john.id))
+        relationships.createParentChild(tree.id, ParentChildRequest(john.id, mark.id))
+        relationships.createParentChild(tree.id, ParentChildRequest(mark.id, david.id))
+        relationships.createParentChild(tree.id, ParentChildRequest(david.id, fifth.id))
+
+        listOf(
+            ParentChildRequest(peter.id, peter.id) to "SELF_PARENT_RELATIONSHIP",
+            ParentChildRequest(david.id, peter.id) to "ANCESTRY_CYCLE",
+            ParentChildRequest(mark.id, john.id) to "ANCESTRY_CYCLE",
+            ParentChildRequest(john.id, peter.id) to "ANCESTRY_CYCLE",
+            ParentChildRequest(fifth.id, peter.id) to "ANCESTRY_CYCLE",
+            ParentChildRequest(david.id, john.id) to "ANCESTRY_CYCLE",
+        ).forEach { (request, code) ->
+            assertEquals(code, assertThrows<BusinessRuleException> {
+                relationships.createParentChild(tree.id, request)
+            }.code)
+        }
+
+        relationships.createParentChild(tree.id, ParentChildRequest(anna.id, john.id))
+        relationships.createParentChild(tree.id, ParentChildRequest(sarah.id, mark.id))
+        relationships.createParentChild(tree.id, ParentChildRequest(fifth.id, newPerson.id))
+        assertEquals(7, relationships.listParentChild(tree.id).size)
+    }
+
+    @Test
+    fun `person and relationship dates preserve biological consistency without restricting other parent types`() {
+        val tree = trees.create(CreateTreeRequest("Dates"))
+        assertEquals("INVALID_PERSON_DATES", assertThrows<BusinessRuleException> {
+            people.create(tree.id, PersonRequest("Invalid", birthDate = LocalDate.parse("2000-01-01"), deathDate = LocalDate.parse("1999-12-31")))
+        }.code)
+        val youngParent = people.create(tree.id, PersonRequest("Young parent", birthDate = LocalDate.parse("2010-01-01")))
+        val child = people.create(tree.id, PersonRequest("Child", birthDate = LocalDate.parse("2000-01-01")))
+
+        assertEquals("INVALID_BIOLOGICAL_PARENT_DATES", assertThrows<BusinessRuleException> {
+            relationships.createParentChild(tree.id, ParentChildRequest(youngParent.id, child.id))
+        }.code)
+        relationships.createParentChild(tree.id, ParentChildRequest(youngParent.id, child.id, RelationshipType.ADOPTIVE))
+
+        val biologicalParent = people.create(tree.id, PersonRequest("Biological parent", birthDate = LocalDate.parse("1970-01-01")))
+        relationships.createParentChild(tree.id, ParentChildRequest(biologicalParent.id, child.id))
+        assertEquals("INVALID_BIOLOGICAL_PARENT_DATES", assertThrows<BusinessRuleException> {
+            people.update(tree.id, biologicalParent.id, PersonRequest("Biological parent", birthDate = LocalDate.parse("2015-01-01")))
+        }.code)
+
+        assertEquals("INVALID_PARTNERSHIP_DATES", assertThrows<BusinessRuleException> {
+            relationships.createPartnership(tree.id, PartnershipRequest(youngParent.id, biologicalParent.id, startDate = LocalDate.parse("2020-01-02"), endDate = LocalDate.parse("2020-01-01")))
+        }.code)
+        relationships.createPartnership(tree.id, PartnershipRequest(youngParent.id, biologicalParent.id, startDate = LocalDate.parse("2020-01-01"), endDate = LocalDate.parse("2020-01-01")))
+    }
+
+    @Test
+    fun `concurrent reverse ancestry writes cannot create a cycle`() {
+        val tree = trees.create(CreateTreeRequest("Concurrent DAG"))
+        val first = people.create(tree.id, PersonRequest("First"))
+        val second = people.create(tree.id, PersonRequest("Second"))
+        val authentication = SecurityContextHolder.getContext().authentication
+        val ready = CountDownLatch(2)
+        val start = CountDownLatch(1)
+        val executor = Executors.newFixedThreadPool(2)
+        fun mutation(parentId: java.util.UUID, childId: java.util.UUID) = Callable {
+            SecurityContextHolder.getContext().authentication = authentication
+            try {
+                ready.countDown()
+                start.await(5, TimeUnit.SECONDS)
+                runCatching { relationships.createParentChild(tree.id, ParentChildRequest(parentId, childId)) }
+            } finally {
+                SecurityContextHolder.clearContext()
+            }
+        }
+
+        try {
+            val results = listOf(
+                executor.submit(mutation(first.id, second.id)),
+                executor.submit(mutation(second.id, first.id)),
+            )
+            assertTrue(ready.await(5, TimeUnit.SECONDS))
+            start.countDown()
+            val outcomes = results.map { it.get(15, TimeUnit.SECONDS) }
+            assertEquals(1, outcomes.count { it.isSuccess })
+            assertEquals("ANCESTRY_CYCLE", (outcomes.single { it.isFailure }.exceptionOrNull() as BusinessRuleException).code)
+            assertEquals(1, relationships.listParentChild(tree.id).size)
+        } finally {
+            executor.shutdownNow()
+        }
     }
 
     @Test

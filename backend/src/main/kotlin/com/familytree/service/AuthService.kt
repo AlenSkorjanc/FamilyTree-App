@@ -75,7 +75,7 @@ class AuthService(
     @Transactional
     fun updateProfile(userId: UUID, request: UpdateProfileRequest): AppUser {
         if (request.birthDate != null && request.deathDate != null && request.deathDate.isBefore(request.birthDate)) {
-            throw BusinessRuleException("Death date cannot be before birth date")
+            throw BusinessRuleException("Death date cannot be before birth date", "INVALID_PERSON_DATES")
         }
         val user = requireUser(userId)
         val normalizedEmail = normalizeEmail(request.email)

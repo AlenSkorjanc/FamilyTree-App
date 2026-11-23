@@ -1,6 +1,7 @@
 package com.familytree.service
 
 import com.familytree.domain.Person
+import com.familytree.domain.RelationshipType
 import com.familytree.dto.PersonRequest
 import com.familytree.dto.PersonResponse
 import com.familytree.exception.BusinessRuleException
@@ -12,6 +13,7 @@ import com.familytree.repository.PersonRepository
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 import java.time.Instant
+import java.time.LocalDate
 import java.util.UUID
 
 @Service
@@ -40,15 +42,23 @@ class PersonService(
 
     @Transactional
     fun update(treeId: UUID, personId: UUID, request: PersonRequest): PersonResponse {
+        treeService.requireEditableTree(treeId)
+        treeService.lockForAncestryMutation(treeId)
         validateDates(request)
-        val person = requirePerson(treeId, personId).applyRequest(request)
+        validateBiologicalRelationships(treeId, personId, request.birthDate)
+        val person = people.findByIdAndTreeId(personId, treeId)
+            ?: throw NotFoundException("Person $personId was not found in tree $treeId", "PERSON_NOT_IN_TREE")
+        person.applyRequest(request)
         person.updatedAt = Instant.now()
         return people.save(person).toResponse()
     }
 
     @Transactional
     fun delete(treeId: UUID, personId: UUID) {
-        val person = requirePerson(treeId, personId)
+        treeService.requireEditableTree(treeId)
+        treeService.lockForAncestryMutation(treeId)
+        val person = people.findByIdAndTreeId(personId, treeId)
+            ?: throw NotFoundException("Person $personId was not found in tree $treeId", "PERSON_NOT_IN_TREE")
         parentChildren.deleteForPerson(treeId, personId)
         partnerships.deleteForPerson(treeId, personId)
         people.delete(person)
@@ -57,21 +67,41 @@ class PersonService(
     fun requirePerson(treeId: UUID, personId: UUID): Person {
         treeService.requireEditableTree(treeId)
         return people.findByIdAndTreeId(personId, treeId)
-            ?: throw NotFoundException("Person $personId was not found in tree $treeId")
+            ?: throw NotFoundException("Person $personId was not found in tree $treeId", "PERSON_NOT_IN_TREE")
     }
 
     fun requirePersonForUpdate(treeId: UUID, personId: UUID): Person = people.findByIdAndTreeIdForUpdate(personId, treeId)
-        ?: throw NotFoundException("Person $personId was not found in family tree $treeId")
+        ?: throw NotFoundException("Person $personId was not found in family tree $treeId", "PERSON_NOT_IN_TREE")
 
     private fun requireReadablePerson(treeId: UUID, personId: UUID): Person {
         treeService.requireReadableTree(treeId)
         return people.findByIdAndTreeId(personId, treeId)
-            ?: throw NotFoundException("Person $personId was not found in tree $treeId")
+            ?: throw NotFoundException("Person $personId was not found in tree $treeId", "PERSON_NOT_IN_TREE")
     }
 
     private fun validateDates(request: PersonRequest) {
         if (request.birthDate != null && request.deathDate != null && request.deathDate.isBefore(request.birthDate)) {
-            throw BusinessRuleException("Death date cannot be before birth date")
+            throw BusinessRuleException("Death date cannot be before birth date", "INVALID_PERSON_DATES")
+        }
+    }
+
+    private fun validateBiologicalRelationships(treeId: UUID, personId: UUID, proposedBirthDate: LocalDate?) {
+        if (proposedBirthDate == null) return
+        val biologicalRelationships = parentChildren.findForPerson(treeId, personId)
+            .filter { it.relationshipType == RelationshipType.BIOLOGICAL }
+        val relativeIds = biologicalRelationships.map { if (it.parentId == personId) it.childId else it.parentId }.toSet()
+        val relatives = people.findAllById(relativeIds).filter { it.treeId == treeId }.associateBy { it.id }
+        val contradiction = biologicalRelationships.any { relationship ->
+            val relativeId = if (relationship.parentId == personId) relationship.childId else relationship.parentId
+            val relativeBirthDate = relatives[relativeId]?.birthDate ?: return@any false
+            if (relationship.parentId == personId) proposedBirthDate.isAfter(relativeBirthDate)
+            else relativeBirthDate.isAfter(proposedBirthDate)
+        }
+        if (contradiction) {
+            throw BusinessRuleException(
+                "This birth date contradicts an existing biological parent-child relationship",
+                "INVALID_BIOLOGICAL_PARENT_DATES",
+            )
         }
     }
 

@@ -26,6 +26,10 @@ interface FamilyTreeRepository : JpaRepository<FamilyTree, UUID> {
     fun findByIdAndGuestOwnerId(id: UUID, guestOwnerId: UUID): FamilyTree?
     fun findByPublicShareId(publicShareId: UUID): FamilyTree?
     fun findByIdAndPublicShareId(id: UUID, publicShareId: UUID): FamilyTree?
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("select t from FamilyTree t where t.id = :id")
+    fun findByIdForUpdate(@Param("id") id: UUID): FamilyTree?
 }
 
 interface FamilyTreeUserAccessRepository : JpaRepository<FamilyTreeUserAccess, UUID> {
@@ -85,14 +89,36 @@ interface PersonRepository : JpaRepository<Person, UUID> {
 interface ParentChildRelationshipRepository : JpaRepository<ParentChildRelationship, UUID> {
     fun findByTreeId(treeId: UUID): List<ParentChildRelationship>
     fun findByIdAndTreeId(id: UUID, treeId: UUID): ParentChildRelationship?
+    fun findByTreeIdAndParentIdAndChildId(treeId: UUID, parentId: UUID, childId: UUID): ParentChildRelationship?
     fun existsByTreeIdAndParentIdAndChildId(treeId: UUID, parentId: UUID, childId: UUID): Boolean
-    fun countByTreeIdAndChildId(treeId: UUID, childId: UUID): Long
 
     @Query("select r from ParentChildRelationship r where r.treeId = :treeId and (r.parentId = :personId or r.childId = :personId)")
     fun findForPerson(@Param("treeId") treeId: UUID, @Param("personId") personId: UUID): List<ParentChildRelationship>
 
-    @Query("select r.childId from ParentChildRelationship r where r.treeId = :treeId and r.parentId in :parentIds")
-    fun findChildIds(@Param("treeId") treeId: UUID, @Param("parentIds") parentIds: Collection<UUID>): List<UUID>
+    @Query(
+        value = """
+            WITH RECURSIVE descendants(person_id) AS (
+                SELECT relationship.child_id
+                FROM parent_child_relationships relationship
+                WHERE relationship.tree_id = :treeId
+                  AND relationship.parent_id = :proposedChildId
+                UNION
+                SELECT relationship.child_id
+                FROM parent_child_relationships relationship
+                JOIN descendants ON relationship.parent_id = descendants.person_id
+                WHERE relationship.tree_id = :treeId
+            )
+            SELECT EXISTS (
+                SELECT 1 FROM descendants WHERE person_id = :proposedParentId
+            )
+        """,
+        nativeQuery = true,
+    )
+    fun wouldCreateCycle(
+        @Param("treeId") treeId: UUID,
+        @Param("proposedParentId") proposedParentId: UUID,
+        @Param("proposedChildId") proposedChildId: UUID,
+    ): Boolean
 
     @Modifying
     @Query("delete from ParentChildRelationship r where r.treeId = :treeId and (r.parentId = :personId or r.childId = :personId)")
@@ -102,8 +128,7 @@ interface ParentChildRelationshipRepository : JpaRepository<ParentChildRelations
 interface PartnershipRepository : JpaRepository<Partnership, UUID> {
     fun findByTreeId(treeId: UUID): List<Partnership>
     fun findByIdAndTreeId(id: UUID, treeId: UUID): Partnership?
-    fun findByTreeIdAndPerson1IdAndPerson2Id(treeId: UUID, person1Id: UUID, person2Id: UUID): Partnership?
-    fun existsByTreeIdAndPerson1IdAndPerson2Id(treeId: UUID, person1Id: UUID, person2Id: UUID): Boolean
+    fun findByTreeIdAndPerson1IdAndPerson2Id(treeId: UUID, person1Id: UUID, person2Id: UUID): List<Partnership>
 
     @Query("select p from Partnership p where p.treeId = :treeId and (p.person1Id = :personId or p.person2Id = :personId)")
     fun findForPerson(@Param("treeId") treeId: UUID, @Param("personId") personId: UUID): List<Partnership>

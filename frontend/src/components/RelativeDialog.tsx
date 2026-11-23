@@ -6,6 +6,7 @@ import { PersonForm } from './PersonForm'
 import { useI18n } from '../i18n'
 import { PersonAvatar, personGenderTone } from './PersonNode'
 import { CheckIcon, ChevronIcon } from './Icons'
+import { descendantIds } from './relationshipIntegrity'
 
 export type RelativeKind = 'parent' | 'child' | 'partner'
 
@@ -37,7 +38,6 @@ export function RelativeDialog({ kind, selectedId, graph, busy, error, onClose, 
     .filter((relationship) => relationship.parentId === parentId)
     .map((relationship) => graph.people.find((person) => person.id === relationship.childId))
     .filter((person) => person !== undefined)
-    .filter((person) => graph.parentChildRelationships.filter((relationship) => relationship.childId === person.id).length < 2)
   const possibleChildren = childrenFor(selectedId)
   const [sharedChildIds, setSharedChildIds] = useState<UUID[]>(possibleChildren.map((child) => child.id))
   const [sharedChildrenSourceId, setSharedChildrenSourceId] = useState<UUID>(selectedId)
@@ -46,26 +46,12 @@ export function RelativeDialog({ kind, selectedId, graph, busy, error, onClose, 
   const suggestedLastName = kind === 'parent' ? selectedPerson?.maidenName ?? selectedPerson?.lastName : kind === 'child' ? selectedPerson?.lastName : null
   const birthDatePickerAnchor = suggestedRelativeBirthDate(kind, selectedPerson?.birthDate)
   const candidates = useMemo(() => {
-    const childrenOf = (id: UUID) => graph.parentChildRelationships.filter((r) => r.parentId === id).map((r) => r.childId)
-    const descendants = (id: UUID) => {
-      const found = new Set<UUID>()
-      let frontier = childrenOf(id)
-      while (frontier.length) {
-        const next = frontier.filter((candidate) => !found.has(candidate))
-        next.forEach((candidate) => found.add(candidate))
-        frontier = next.flatMap(childrenOf)
-      }
-      return found
-    }
     const alreadyRelated = new Set(kind === 'partner'
       ? graph.partnerships.filter((r) => r.person1Id === selectedId || r.person2Id === selectedId).map((r) => r.person1Id === selectedId ? r.person2Id : r.person1Id)
       : graph.parentChildRelationships.filter((r) => kind === 'parent' ? r.childId === selectedId : r.parentId === selectedId).map((r) => kind === 'parent' ? r.parentId : r.childId))
-    const ancestors = new Set(graph.people.filter((person) => descendants(person.id).has(selectedId)).map((person) => person.id))
-    const cycleCandidates = kind === 'parent' ? descendants(selectedId) : kind === 'child' ? ancestors : new Set([...descendants(selectedId), ...ancestors])
-    const incompatibleCandidates = new Set(kind === 'partner'
-      ? graph.parentChildRelationships.filter((r) => r.parentId === selectedId || r.childId === selectedId).map((r) => r.parentId === selectedId ? r.childId : r.parentId)
-      : graph.partnerships.filter((r) => r.person1Id === selectedId || r.person2Id === selectedId).map((r) => r.person1Id === selectedId ? r.person2Id : r.person1Id))
-    return graph.people.filter((person) => person.id !== selectedId && !alreadyRelated.has(person.id) && !cycleCandidates.has(person.id) && !incompatibleCandidates.has(person.id) && fullName(person).toLowerCase().includes(query.toLowerCase()))
+    const ancestors = new Set(graph.people.filter((person) => descendantIds(graph, person.id).has(selectedId)).map((person) => person.id))
+    const cycleCandidates = kind === 'parent' ? descendantIds(graph, selectedId) : kind === 'child' ? ancestors : new Set<UUID>()
+    return graph.people.filter((person) => person.id !== selectedId && !alreadyRelated.has(person.id) && !cycleCandidates.has(person.id) && fullName(person).toLowerCase().includes(query.toLowerCase()))
   }, [graph, kind, query, selectedId])
   const candidateChildren = candidateId ? childrenFor(candidateId) : []
   const chooseCandidate = (personId: UUID) => {

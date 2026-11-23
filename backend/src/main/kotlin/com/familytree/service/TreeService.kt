@@ -129,6 +129,9 @@ class TreeService(
         throw NotFoundException("Family tree $id was not found")
     }
 
+    fun lockForAncestryMutation(id: UUID): FamilyTree = repository.findByIdForUpdate(id)
+        ?: throw NotFoundException("Family tree $id was not found")
+
     fun requireReadableTree(id: UUID): AccessibleTree {
         val userId = authenticatedUser.idOrNull()
         if (userId != null) {
