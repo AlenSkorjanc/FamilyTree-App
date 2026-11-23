@@ -7,7 +7,7 @@ const { chromium } = requireFrontend('playwright')
 
 const ROOT = 'http://127.0.0.1:8080'
 const results = []
-const browser = await chromium.launch({ headless: true, args: ['--no-sandbox'] })
+const browser = await chromium.launch({ channel: 'chrome', headless: true, args: ['--no-sandbox'] })
 const run = async (name, fn) => {
   try {
     await fn()
