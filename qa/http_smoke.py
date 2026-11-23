@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Disposable HTTP integration suite. Uses only Python standard library and a local Docker test database."""
-import http.cookiejar
+import http.cookiejar as cookiejar
 import json
 import re
 import time
@@ -49,7 +49,7 @@ def expect(method, path, codes, payload=None, opener=None, headers=None):
     return body, response_headers
 
 def client():
-    return urllib.request.build_opener(urllib.request.HTTPCookieProcessor(http.cookiejar.CookieJar()))
+    return urllib.request.build_opener(urllib.request.HTTPCookieProcessor(cookiejar.CookieJar()))
 
 def mailpit_messages():
     with urllib.request.urlopen(MAILPIT + "/api/v1/messages", timeout=10) as response:
