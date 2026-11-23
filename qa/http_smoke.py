@@ -173,7 +173,7 @@ def main():
         boundary = "----FamilyTreeQaBoundary"
         raw = b"--" + boundary.encode() + b"\r\nContent-Disposition: form-data; name=\"file\"; filename=\"test.png\"\r\nContent-Type: image/png\r\n\r\n" + image + b"\r\n--" + boundary.encode() + b"--\r\n"
         request = urllib.request.Request(BASE + path + "/photos", method="POST", data=raw,
-            headers={"Content-Type":"multipart/form-data; boundary=" + boundary, "Cookie":"; ".join(f"{c.name}={c.value}" for c in guest.handlers[0].cookiejar)})
+            headers={"Content-Type":"multipart/form-data; boundary=" + boundary, "Cookie":"; ".join(f"{c.name}={c.value}" for c in next(h.cookiejar for h in guest.handlers if isinstance(h, urllib.request.HTTPCookieProcessor)))})
         try:
             with urllib.request.urlopen(request,timeout=15) as res: status=res.status
         except urllib.error.HTTPError as err: status=err.code
