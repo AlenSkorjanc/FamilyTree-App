@@ -55,7 +55,7 @@ try {
   })
   await run('Search a person and focus node', async () => {
     await page.getByRole('button',{name:'Open menu'}).click()
-    await page.getByPlaceholder('Search people…').fill('BrowserQA')
+    await page.getByRole('searchbox', {name:'Search people'}).fill('BrowserQA')
     await page.getByRole('button',{name:/BrowserQA/}).last().click()
     await page.locator('.person-node',{hasText:'BrowserQA'}).first().waitFor()
   })
@@ -97,7 +97,7 @@ try {
   await run('Mobile-width tree and menu interaction', async () => {
     await mp.getByRole('heading',{name:'Your tree is ready'}).waitFor({timeout:15000})
     await mp.getByRole('button',{name:'Open menu'}).click()
-    await mp.getByRole('button',{name:'Close menu'}).waitFor()
+    await mp.locator('.mobile-menu-toggle[aria-expanded="true"]').waitFor()
     await mp.keyboard.press('Escape')
   })
   await run('Mobile browser console free from uncaught exceptions', async () => {
