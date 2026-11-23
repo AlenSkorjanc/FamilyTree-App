@@ -24,6 +24,8 @@ try {
   const page = await context.newPage()
   const errors = []
   page.on('pageerror', error => errors.push(error.message))
+  page.on('response',response=>{if(response.url().includes('/api/')) console.log('DESKTOP_API', response.request().method(), response.status(), response.url())})
+  page.on('console',msg=>{if(msg.type()==='error')console.log('DESKTOP_CONSOLE_ERROR',msg.text())})
   await run('Desktop welcome screen and app branding', async () => {
     const response = await page.goto(ROOT + '/', {waitUntil: 'domcontentloaded'})
     assert.equal(response.status(), 200)
@@ -33,7 +35,7 @@ try {
   await run('Guest tree creation through actual UI', async () => {
     await page.getByPlaceholder('Tree name, e.g. The Novak Family').fill('QA browser regression')
     await page.getByRole('button', {name:'Create family tree'}).click()
-    await page.waitForURL(/\/trees\/[0-9a-f-]{36}$/, {timeout:15000})
+    try { await page.waitForFunction(() => /^\/trees\/[0-9a-f-]{36}$/.test(location.pathname), null, {timeout:15000}) } catch(error) { console.log('CREATE_TREE_DIAGNOSTIC', JSON.stringify({url:page.url(),body:(await page.locator('body').innerText()).slice(0,1400),localStorage:await page.evaluate(()=>Object.fromEntries(Object.entries(localStorage)))})); throw error }
     await page.getByRole('heading', {name:'Your tree is ready'}).waitFor()
     const ids = await page.evaluate(() => JSON.parse(localStorage.getItem('family-tree-guest-tree-ids') || '[]'))
     assert.ok(ids.length >= 1)
@@ -81,6 +83,8 @@ try {
   const mp = await mobile.newPage()
   const mobileErrors = []
   mp.on('pageerror',error=>mobileErrors.push(error.message))
+  mp.on('response',response=>{if(response.url().includes('/api/')) console.log('MOBILE_API', response.request().method(), response.status(), response.url())})
+  mp.on('console',msg=>{if(msg.type()==='error')console.log('MOBILE_CONSOLE_ERROR',msg.text())})
   await run('Mobile-width welcome screen and browser form', async () => {
     await mp.goto(ROOT + '/', {waitUntil:'domcontentloaded'})
     await mp.getByRole('heading',{name:'Start your family story'}).waitFor({timeout:15000})
@@ -88,7 +92,7 @@ try {
     assert.ok(overflow <= 8, 'Horizontal overflow: ' + overflow)
     await mp.getByPlaceholder('Tree name, e.g. The Novak Family').fill('QA mobile tree')
     await mp.getByRole('button',{name:'Create family tree'}).click()
-    await mp.waitForURL(/\/trees\/[0-9a-f-]{36}$/,{timeout:15000})
+    try { await mp.waitForFunction(() => /^\/trees\/[0-9a-f-]{36}$/.test(location.pathname), null, {timeout:15000}) } catch(error) { console.log('CREATE_TREE_MOBILE_DIAGNOSTIC', JSON.stringify({url:mp.url(),body:(await mp.locator('body').innerText()).slice(0,1200)})); throw error }
   })
   await run('Mobile-width tree and menu interaction', async () => {
     await mp.getByRole('heading',{name:'Your tree is ready'}).waitFor({timeout:15000})
