@@ -92,8 +92,12 @@ jobs:
           docker logs --tail 100 familytree-qa-web
           exit 1
       - name: HTTP API and email integration smoke suite
+        id: http_smoke
+        continue-on-error: true
         run: python3 qa/http_smoke.py
       - name: Browser and responsive smoke suite
+        id: browser_smoke
+        if: always() && steps.http_smoke.outcome != 'skipped'
         run: |
           cd frontend
           npm ci
@@ -111,3 +115,10 @@ jobs:
         run: |
           docker rm -f familytree-qa-web || true
           docker compose down -v || true
+      - name: Enforce smoke test outcomes
+        if: always()
+        run: |
+          echo "HTTP smoke outcome: ${{ steps.http_smoke.outcome }}"
+          echo "Browser smoke outcome: ${{ steps.browser_smoke.outcome }}"
+          test "${{ steps.http_smoke.outcome }}" = success
+          test "${{ steps.browser_smoke.outcome }}" = success
