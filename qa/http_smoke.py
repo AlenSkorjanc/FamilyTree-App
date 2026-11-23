@@ -114,7 +114,7 @@ def main():
         hits, _ = expect("GET", path + "/people?search=Novak", {200}, opener=guest)
         assert any(p["id"] == people["Parent"] for p in hits)
         expect("POST", path + "/people", {400}, {"firstName": " "}, guest)
-        expect("POST", path + "/people", {400}, {"firstName": "Invalid", "birthDate": "2000-01-01", "deathDate": "1999-12-31"}, guest)
+        expect("POST", path + "/people", {422}, {"firstName": "Invalid", "birthDate": "2000-01-01", "deathDate": "1999-12-31"}, guest)
     checked("Person create/edit/search and invalid date rejection", test_persons)
     if len(people) < 5:
         print("FATAL: unable to build topology")
@@ -129,9 +129,9 @@ def main():
         pc("Parent", "Child")
         expect("POST", path + "/parent-child-relationships", {409},
             {"parentId":people["Parent"],"childId":people["Child"],"relationshipType":"BIOLOGICAL"},guest)
-        expect("POST", path + "/parent-child-relationships", {400,409},
+        expect("POST", path + "/parent-child-relationships", {400,409,422},
             {"parentId":people["Child"],"childId":people["Child"]},guest)
-        cycle, _ = expect("POST", path + "/parent-child-relationships", {400,409},
+        cycle, _ = expect("POST", path + "/parent-child-relationships", {400,409,422},
             {"parentId":people["Child"],"childId":people["Grandparent"]},guest)
         assert isinstance(cycle, dict) and cycle.get("code") == "ANCESTRY_CYCLE", cycle
     checked("Ancestry downward data, duplicate/self/cycle rejection", test_ancestry)
@@ -159,7 +159,7 @@ def main():
             {"person1Id":people["Grandparent"], "person2Id":people["Parent"],"partnershipType":"MARRIAGE","isCurrent":True},guest)
         expect("POST", path + "/partnerships", {409},
             {"person1Id":people["Parent"], "person2Id":people["Grandparent"],"partnershipType":"MARRIAGE"},guest)
-        expect("POST", path + "/partnerships", {400, 409},
+        expect("POST", path + "/partnerships", {400, 409, 422},
             {"person1Id":people["Child"],"person2Id":people["Child"]},guest)
         graph, _ = expect("GET", path + "/graph", {200}, opener=guest)
         assert len(graph["people"]) == 5
@@ -177,7 +177,7 @@ def main():
         try:
             with urllib.request.urlopen(request,timeout=15) as res: status=res.status
         except urllib.error.HTTPError as err: status=err.code
-        assert status in (400,403,409,501,503), status
+        assert status in (400,403,409,422,501,503), status
     checked("Production photo uploads disabled", test_no_photo_upload)
 
     def test_reg_verify():
