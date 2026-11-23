@@ -102,7 +102,7 @@ jobs:
           cd frontend
           npm ci
           npm install --no-save playwright@1.57.0
-          npx playwright install --with-deps chromium
+          google-chrome --version
           cd ..
           node qa/browser_smoke.mjs
       - name: Collect container output
