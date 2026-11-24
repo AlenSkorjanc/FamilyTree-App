@@ -48,7 +48,38 @@ function Canvas({ graph, readOnly = false, selectedPersonIds, edgeSelectionActiv
     const person = peopleById.get(occurrence.personId)
     return person ? [{ id: occurrence.id, person, isAlias: occurrence.isAlias }] : []
   }), [peopleById, visualOccurrences.occurrences])
-  const sharedFamilies = useMemo(() => sharedParentFamilies(graph, visualOccurrences.partnershipEndpoints), [graph, visualOccurrences.partnershipEndpoints])
+  // Co-parent links are display-only; never add them to the persisted graph.
+  const displayGraph = useMemo<FamilyGraph>(() => {
+    const partnerships = [...graph.partnerships]
+    const byChild = new Map<UUID, typeof graph.parentChildRelationships>()
+    graph.parentChildRelationships.forEach((relation) => {
+      byChild.set(relation.childId, [...(byChild.get(relation.childId) ?? []), relation])
+    })
+    byChild.forEach((relations) => {
+      if (relations.length !== 2) return
+      const [first, second] = [...relations].sort((a, b) => a.parentId.localeCompare(b.parentId))
+      if (partnerships.some((p) => (p.person1Id === first.parentId && p.person2Id === second.parentId)
+        || (p.person2Id === first.parentId && p.person1Id === second.parentId))) return
+      const a = visualOccurrences.relationshipEndpoints.get(first.id)
+      const b = visualOccurrences.relationshipEndpoints.get(second.id)
+      if (!a || !b || a.sourceId !== first.parentId || b.sourceId !== second.parentId
+        || visualOccurrences.ranks.get(a.sourceId) !== visualOccurrences.ranks.get(b.sourceId)) return
+      partnerships.push({
+        id: `coparent:${first.parentId}:${second.parentId}`,
+        person1Id: first.parentId, person2Id: second.parentId,
+        partnershipType: 'OTHER', isCurrent: false, startDate: null, createdAt: '',
+      } as FamilyGraph['partnerships'][number])
+    })
+    return { ...graph, partnerships }
+  }, [graph, visualOccurrences])
+  const displayEndpoints = useMemo(() => {
+    const endpoints = new Map(visualOccurrences.partnershipEndpoints)
+    displayGraph.partnerships.filter((p) => p.id.startsWith('coparent:')).forEach((p) => {
+      endpoints.set(p.id, { sourceId: p.person1Id, targetId: p.person2Id })
+    })
+    return endpoints
+  }, [displayGraph, visualOccurrences])
+  const sharedFamilies = useMemo(() => sharedParentFamilies(displayGraph, displayEndpoints), [displayGraph, displayEndpoints])
   const sharedRelationships = useMemo(() => new Set(
     sharedFamilies.flatMap((family) => family.children.flatMap((child) => child.relationships.map((relationship) => relationship.id))),
   ), [sharedFamilies])
@@ -69,8 +100,8 @@ function Canvas({ graph, readOnly = false, selectedPersonIds, edgeSelectionActiv
       ] as const),
     ]),
   ), [sharedFamilies])
-  const layoutPartnerships = useMemo(() => graph.partnerships.flatMap((partnership) => {
-    const endpoints = visualOccurrences.partnershipEndpoints.get(partnership.id)
+  const layoutPartnerships = useMemo(() => displayGraph.partnerships.flatMap((partnership) => {
+    const endpoints = displayEndpoints.get(partnership.id)
     return endpoints ? [{
       id: partnership.id,
       person1Id: endpoints.sourceId,
@@ -80,7 +111,7 @@ function Canvas({ graph, readOnly = false, selectedPersonIds, edgeSelectionActiv
       startDate: partnership.startDate,
       createdAt: partnership.createdAt,
     }] : []
-  }), [graph.partnerships, visualOccurrences.partnershipEndpoints])
+  }), [displayGraph.partnerships, displayEndpoints])
 
   const graphEdges = useMemo<Edge[]>(() => [
     ...graph.parentChildRelationships.filter((relation) => !sharedRelationships.has(relation.id)).flatMap((relation) => {
@@ -96,7 +127,7 @@ function Canvas({ graph, readOnly = false, selectedPersonIds, edgeSelectionActiv
     }] : []
     }),
     ...sharedFamilies.flatMap((family) => family.children.flatMap((child) => {
-      const partnershipEndpoints = visualOccurrences.partnershipEndpoints.get(family.partnership.id)
+      const partnershipEndpoints = displayEndpoints.get(family.partnership.id)
       const childEndpoints = visualOccurrences.relationshipEndpoints.get(child.relationships[0].id)
       return partnershipEndpoints && childEndpoints ? [{
       id: sharedFamilyEdgeId(family.partnership.id, child.childId),
@@ -111,7 +142,7 @@ function Canvas({ graph, readOnly = false, selectedPersonIds, edgeSelectionActiv
     }] : []
     })),
     ...sharedFamilies.flatMap((family) => {
-      const endpoints = visualOccurrences.partnershipEndpoints.get(family.partnership.id)
+      const endpoints = displayEndpoints.get(family.partnership.id)
       return endpoints ? [{
       id: sharedFamilyTrunkEdgeId(family.partnership.id),
       source: endpoints.sourceId, target: endpoints.targetId,
@@ -119,20 +150,20 @@ function Canvas({ graph, readOnly = false, selectedPersonIds, edgeSelectionActiv
       style: { stroke: '#899b90', strokeWidth: 3.15 },
     }] : []
     }),
-    ...graph.partnerships.flatMap((relation) => {
-      const endpoints = visualOccurrences.partnershipEndpoints.get(relation.id)
+    ...displayGraph.partnerships.flatMap((relation) => {
+      const endpoints = displayEndpoints.get(relation.id)
       return endpoints ? [{
       id: `partner-${relation.id}`, source: endpoints.sourceId, target: endpoints.targetId,
       sourceHandle: 'partner-bottom-source', targetHandle: 'partner-bottom-target', type: 'partnership',
-      style: { stroke: relation.isCurrent ? '#a96057' : '#c47b70', strokeWidth: 3.15 },
-      label: relation.isCurrent || (partnershipCounts.get(relation.person1Id) === 1 && partnershipCounts.get(relation.person2Id) === 1)
+      style: { stroke: relation.id.startsWith('coparent:') ? '#899b90' : relation.isCurrent ? '#a96057' : '#c47b70', strokeWidth: 3.15, strokeDasharray: relation.id.startsWith('coparent:') ? '6 5' : undefined },
+      label: !relation.id.startsWith('coparent:') && (relation.isCurrent || (partnershipCounts.get(relation.person1Id) === 1 && partnershipCounts.get(relation.person2Id) === 1))
         ? partnershipStatusLabel(relation.partnershipType, t)
         : undefined,
       data: { partnershipType: relation.partnershipType, isCurrent: relation.isCurrent, joined: true },
       labelStyle: { fill: '#8d5d55', fontSize: 10 },
     }] : []
     }),
-  ], [graph.parentChildRelationships, graph.partnerships, partnershipCounts, sharedFamilies, sharedRelationships, t, visualOccurrences.partnershipEndpoints, visualOccurrences.relationshipEndpoints])
+  ], [graph.parentChildRelationships, displayGraph.partnerships, partnershipCounts, sharedFamilies, sharedRelationships, t, displayEndpoints, visualOccurrences.relationshipEndpoints])
 
   useEffect(() => {
     let current = true
@@ -194,7 +225,7 @@ function Canvas({ graph, readOnly = false, selectedPersonIds, edgeSelectionActiv
       const positionedEdges = graphEdges.map((edge) => {
         const sharedBranch = sharedBranchesByEdgeId.get(edge.id)
         if (sharedBranch) {
-          const partnershipEndpoints = visualOccurrences.partnershipEndpoints.get(sharedBranch.family.partnership.id)
+          const partnershipEndpoints = displayEndpoints.get(sharedBranch.family.partnership.id)
           const firstPosition = partnershipEndpoints ? positions.get(partnershipEndpoints.sourceId) : undefined
           const secondPosition = partnershipEndpoints ? positions.get(partnershipEndpoints.targetId) : undefined
           if (!firstPosition || !secondPosition) return edge
@@ -232,7 +263,7 @@ function Canvas({ graph, readOnly = false, selectedPersonIds, edgeSelectionActiv
     }
     void layout()
     return () => { current = false }
-  }, [graph.parentChildRelationships, graph.partnerships, graphEdges, flow, layoutPartnerships, setEdges, setNodes, sharedBranchesByEdgeId, visualOccurrences.partnershipEndpoints, visualOccurrences.ranks, visualOccurrences.relationshipEndpoints, visualPeople])
+  }, [graph.parentChildRelationships, graph.partnerships, graphEdges, flow, layoutPartnerships, setEdges, setNodes, sharedBranchesByEdgeId, displayEndpoints, visualOccurrences.ranks, visualOccurrences.relationshipEndpoints, visualPeople])
 
   useEffect(() => {
     setNodes((existing) => selectPersonOccurrences(existing, selectedPersonIds, edgeSelectionActive))
@@ -277,9 +308,9 @@ function Canvas({ graph, readOnly = false, selectedPersonIds, edgeSelectionActiv
       onEdgeClick={(event, edge) => {
         const pointElements = document.elementsFromPoint?.(event.clientX, event.clientY) ?? []
         const closestEdgeId = closestEdgeIdFromPointElements(pointElements, edge.id, event.clientX, event.clientY)
-        const selectedEdges = new Set(completeFamilyBranchEdgeIds([closestEdgeId], graph))
+        const selectedEdges = new Set(completeFamilyBranchEdgeIds([closestEdgeId], displayGraph))
         setEdges((existing) => existing.map((candidate) => ({ ...candidate, selected: selectedEdges.has(candidate.id) })))
-        const personIds = personIdsForGraphEdges([closestEdgeId], graph)
+        const personIds = personIdsForGraphEdges([closestEdgeId], displayGraph)
         if (personIds.length) {
           onSelectConnection(personIds)
           return
