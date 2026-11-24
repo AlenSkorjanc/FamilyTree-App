@@ -145,7 +145,8 @@ def main():
             if isinstance(third_body, dict) and third_body.get("id"):
                 expect("DELETE", path + "/parent-child-relationships/" + third_body["id"], {204}, opener=guest)
             raise AssertionError("POLICY FAILURE: third parent was accepted (HTTP 201), user requires max 2 combined biological/adoptive")
-        assert third_status in (400, 409), (third_status, third_body)
+        assert third_status == 422, (third_status, third_body)
+        assert third_body.get("code") == "MAX_PARENTS_REACHED", third_body
     checked("Maximum TWO total biological/adoptive parent relationships", test_two_parents)
     def test_supported_types_only():
         for kind in ("STEP", "OTHER"):
