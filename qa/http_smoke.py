@@ -147,6 +147,18 @@ def main():
             raise AssertionError("POLICY FAILURE: third parent was accepted (HTTP 201), user requires max 2 combined biological/adoptive")
         assert third_status in (400, 409), (third_status, third_body)
     checked("Maximum TWO total biological/adoptive parent relationships", test_two_parents)
+    def test_supported_types_only():
+        for kind in ("STEP", "OTHER"):
+            response_status, response_body, _ = http(
+                "POST", path + "/parent-child-relationships",
+                {"parentId": people["Third parent"], "childId": people["Child"], "relationshipType": kind},
+                opener=guest,
+            )
+            assert response_status == 422, (kind, response_status, response_body)
+            assert response_body.get("code") == "UNSUPPORTED_PARENT_RELATIONSHIP_TYPE", response_body
+        relations, _ = expect("GET", path + "/parent-child-relationships", {200}, opener=guest)
+        assert sum(1 for rel in relations if rel["childId"] == people["Child"]) == 2
+    checked("Unsupported STEP/OTHER writes rejected with HTTP 422 and no side effects", test_supported_types_only)
     def test_cross_tree():
         other_tree, _ = expect("POST", "/api/trees", {201}, {"name": "Other test tree"}, guest)
         x, _ = expect("POST", "/api/trees/" + other_tree["id"] + "/people", {201}, {"firstName":"Other tree person"}, guest)
