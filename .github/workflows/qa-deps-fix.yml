@@ -22,7 +22,7 @@ jobs:
         run: npm ci
         working-directory: frontend
       - name: Update compatible versions for all known advisories
-        run: npm audit fix --package-lock-only --ignore-scripts
+        run: npm update --package-lock-only --ignore-scripts
         working-directory: frontend
       - name: Install exact remediated lockfile
         run: npm ci
