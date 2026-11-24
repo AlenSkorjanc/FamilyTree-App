@@ -53,6 +53,32 @@ try {
     await page.getByRole('button',{name:'Save person'}).click()
     await page.locator('.person-node',{hasText:'BrowserQA'}).first().waitFor({timeout:20000})
   })
+  await run('Two parents hide parent controls in details and graph node', async () => {
+    const treeId = treeUrl.split('/').at(-1)
+    assert.ok(treeId)
+    const graphResponse = await page.request.get(ROOT + '/api/trees/' + treeId + '/graph')
+    assert.equal(graphResponse.status(), 200)
+    const graph = await graphResponse.json()
+    const child = graph.people.find(person => person.firstName === 'BrowserQA')
+    assert.ok(child, 'BrowserQA person must exist')
+    for (const [name, type] of [['QA Parent A', 'BIOLOGICAL'], ['QA Parent B', 'ADOPTIVE']]) {
+      const parentResponse = await page.request.post(ROOT + '/api/trees/' + treeId + '/people', {data: {firstName:name}})
+      assert.equal(parentResponse.status(), 201)
+      const parent = await parentResponse.json()
+      const relationResponse = await page.request.post(ROOT + '/api/trees/' + treeId + '/parent-child-relationships', {
+        data:{parentId:parent.id,childId:child.id,relationshipType:type}
+      })
+      assert.equal(relationResponse.status(), 201)
+    }
+    await page.reload({waitUntil:'domcontentloaded'})
+    const node = page.locator('.person-node',{hasText:'BrowserQA'}).first()
+    await node.waitFor({timeout:20000})
+    assert.equal(await node.locator('button[aria-label="Add parent directly to the tree"]').count(), 0)
+    await node.click()
+    const parentSection = page.locator('.relative-section').filter({has:page.locator('h3',{hasText:'Parents'})})
+    await parentSection.waitFor({timeout:10000})
+    assert.equal(await parentSection.locator('header button').count(), 0)
+  })
   await run('Search a person and focus node', async () => {
     await page.getByRole('button',{name:'Open menu'}).click()
     await page.getByRole('searchbox', {name:'Search people'}).fill('BrowserQA')
