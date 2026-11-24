@@ -30,6 +30,12 @@ class RelationshipService(
     fun createParentChild(treeId: UUID, request: ParentChildRequest): ParentChildResponse {
         treeService.requireEditableTree(treeId)
         treeService.lockForAncestryMutation(treeId)
+        if (request.relationshipType != RelationshipType.BIOLOGICAL && request.relationshipType != RelationshipType.ADOPTIVE) {
+            throw BusinessRuleException(
+                "Only biological and adoptive parent-child relationships can be created",
+                "UNSUPPORTED_PARENT_RELATIONSHIP_TYPE",
+            )
+        }
         if (request.parentId == request.childId) {
             throw BusinessRuleException("A person cannot be their own parent or child", "SELF_PARENT_RELATIONSHIP")
         }
@@ -50,6 +56,15 @@ class RelationshipService(
             }
             existing.relationshipType = request.relationshipType
             return parentChildren.save(existing).toResponse()
+        }
+        // The per-tree row lock above serializes concurrent ancestry writes across application instances.
+        // Count every existing parent edge, including legacy STEP/OTHER rows, so they cannot
+        // silently consume an additional slot. An edit of an existing edge is handled above.
+        if (parentChildren.countByTreeIdAndChildId(treeId, request.childId) >= 2) {
+            throw BusinessRuleException(
+                "A child cannot have more than two parents",
+                "MAX_PARENTS_REACHED",
+            )
         }
         if (parentChildren.wouldCreateCycle(treeId, request.parentId, request.childId)) {
             throw BusinessRuleException(
