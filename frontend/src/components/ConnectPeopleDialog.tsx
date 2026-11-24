@@ -31,16 +31,21 @@ export function ConnectPeopleDialog({ graph, personIds, busy, error, onClose, on
   const [isCurrent, setCurrent] = useState(false)
   const childSources = personIds.filter((personId) => graph.parentChildRelationships.some((relationship) => relationship.parentId === personId))
   const [childrenSourceId, setChildrenSourceId] = useState<UUID>(childSources[0] ?? '')
+  const parentCount = (childId: UUID) => graph.parentChildRelationships.filter((relationship) => relationship.childId === childId).length
   const childrenFor = (parentId: UUID) => graph.parentChildRelationships
     .filter((relationship) => relationship.parentId === parentId)
     .map((relationship) => graph.people.find((person) => person.id === relationship.childId))
     .filter((person) => person !== undefined)
+    .filter((child) => parentCount(child.id) < 2 || graph.parentChildRelationships.some((relationship) =>
+      relationship.childId === child.id && relationship.parentId === personIds.find((id) => id !== parentId)))
   const [sharedChildIds, setSharedChildIds] = useState<UUID[]>(() => childrenFor(childSources[0] ?? '').map((child) => child.id))
 
   if (!first || !second) return null
   const names = { first: fullName(first), second: fullName(second) }
   const firstParentWouldCycle = wouldCreateParentChildCycle(graph, first.id, second.id)
   const secondParentWouldCycle = wouldCreateParentChildCycle(graph, second.id, first.id)
+  const firstParentAtLimit = parentCount(second.id) >= 2
+  const secondParentAtLimit = parentCount(first.id) >= 2
   const submit = () => {
     if (choice === 'PARTNERS') {
       const selectedSharedChildIds = partnershipType === 'PARTNERSHIP' ? sharedChildIds : []
@@ -65,8 +70,8 @@ export function ConnectPeopleDialog({ graph, personIds, busy, error, onClose, on
       <label>{t('connection')}
         <select value={choice} onChange={(event) => setChoice(event.target.value as ConnectionChoice)}>
           <option value="PARTNERS">{t('partnersConnection', names)}</option>
-          <option value="FIRST_PARENT" disabled={firstParentWouldCycle}>{t('firstParentConnection', names)}{firstParentWouldCycle ? ` — ${t('ancestryCycleShort')}` : ''}</option>
-          <option value="SECOND_PARENT" disabled={secondParentWouldCycle}>{t('secondParentConnection', names)}{secondParentWouldCycle ? ` — ${t('ancestryCycleShort')}` : ''}</option>
+          <option value="FIRST_PARENT" disabled={firstParentWouldCycle || firstParentAtLimit}>{t('firstParentConnection', names)}{firstParentWouldCycle ? ` — ${t('ancestryCycleShort')}` : firstParentAtLimit ? ` — ${t('parentLimitShort')}` : ''}</option>
+          <option value="SECOND_PARENT" disabled={secondParentWouldCycle || secondParentAtLimit}>{t('secondParentConnection', names)}{secondParentWouldCycle ? ` — ${t('ancestryCycleShort')}` : secondParentAtLimit ? ` — ${t('parentLimitShort')}` : ''}</option>
         </select>
       </label>
       {choice === 'PARTNERS' && <label className="current-partner-checkbox"><input type="checkbox" checked={isCurrent} onChange={(event) => setCurrent(event.target.checked)} /><span>{t('setAsCurrentPartner')}</span></label>}
@@ -74,7 +79,7 @@ export function ConnectPeopleDialog({ graph, personIds, busy, error, onClose, on
         {choice === 'PARTNERS' ? <select value={partnershipType} onChange={(event) => setPartnershipType(event.target.value as PartnershipType)}>
           <option value="PARTNERSHIP">{t('partnership')}</option><option value="MARRIAGE">{t('marriage')}</option><option value="OTHER">{t('other')}</option>
         </select> : <select value={relationshipType} onChange={(event) => setRelationshipType(event.target.value as RelationshipType)}>
-          <option value="BIOLOGICAL">{t('biological')}</option><option value="ADOPTIVE">{t('adoptive')}</option><option value="STEP">{t('step')}</option><option value="OTHER">{t('other')}</option>
+          <option value="BIOLOGICAL">{t('biological')}</option><option value="ADOPTIVE">{t('adoptive')}</option>
         </select>}
       </label>
       {choice === 'PARTNERS' && partnershipType === 'PARTNERSHIP' && childSources.length > 0 && <>
