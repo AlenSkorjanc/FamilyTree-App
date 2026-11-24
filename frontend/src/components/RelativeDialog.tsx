@@ -38,7 +38,9 @@ export function RelativeDialog({ kind, selectedId, graph, busy, error, onClose, 
     .filter((relationship) => relationship.parentId === parentId)
     .map((relationship) => graph.people.find((person) => person.id === relationship.childId))
     .filter((person) => person !== undefined)
-  const possibleChildren = childrenFor(selectedId)
+  const parentCount = (childId: UUID) => graph.parentChildRelationships.filter((relationship) => relationship.childId === childId).length
+  const canShareWith = (childId: UUID, newParentId: UUID) => parentCount(childId) < 2 || graph.parentChildRelationships.some((relationship) => relationship.parentId === newParentId && relationship.childId === childId)
+  const possibleChildren = childrenFor(selectedId).filter((child) => parentCount(child.id) < 2)
   const [sharedChildIds, setSharedChildIds] = useState<UUID[]>(possibleChildren.map((child) => child.id))
   const [sharedChildrenSourceId, setSharedChildrenSourceId] = useState<UUID>(selectedId)
   const kindLabel = t(kind)
@@ -51,13 +53,14 @@ export function RelativeDialog({ kind, selectedId, graph, busy, error, onClose, 
       : graph.parentChildRelationships.filter((r) => kind === 'parent' ? r.childId === selectedId : r.parentId === selectedId).map((r) => kind === 'parent' ? r.parentId : r.childId))
     const ancestors = new Set(graph.people.filter((person) => descendantIds(graph, person.id).has(selectedId)).map((person) => person.id))
     const cycleCandidates = kind === 'parent' ? descendantIds(graph, selectedId) : kind === 'child' ? ancestors : new Set<UUID>()
-    return graph.people.filter((person) => person.id !== selectedId && !alreadyRelated.has(person.id) && !cycleCandidates.has(person.id) && fullName(person).toLowerCase().includes(query.toLowerCase()))
+    return graph.people.filter((person) => person.id !== selectedId && !alreadyRelated.has(person.id) && !cycleCandidates.has(person.id) && (kind !== 'child' || graph.parentChildRelationships.filter((relationship) => relationship.childId === person.id).length < 2) && fullName(person).toLowerCase().includes(query.toLowerCase()))
   }, [graph, kind, query, selectedId])
-  const candidateChildren = candidateId ? childrenFor(candidateId) : []
+  const candidateChildren = candidateId ? childrenFor(candidateId).filter((child) => canShareWith(child.id, selectedId)) : []
+  const allowSecondParent = kind === 'child' && (mode === 'create' || !candidateId || parentCount(candidateId) === 0)
   const chooseCandidate = (personId: UUID) => {
     setCandidateId(personId)
     setSharedChildrenSourceId(personId)
-    setSharedChildIds(childrenFor(personId).map((child) => child.id))
+    setSharedChildIds(childrenFor(personId).filter((child) => canShareWith(child.id, selectedId)).map((child) => child.id))
   }
   const showLinkChildren = kind === 'partner' && type === 'PARTNERSHIP' && candidateChildren.length > 0
 
@@ -69,11 +72,11 @@ export function RelativeDialog({ kind, selectedId, graph, busy, error, onClose, 
       </div>
       <label className="relationship-type">{t('relationshipType')}
         <select value={type} onChange={(event) => setType(event.target.value as RelationshipType | PartnershipType)}>
-          {kind === 'partner' ? <><option value="PARTNERSHIP">{t('partnership')}</option><option value="MARRIAGE">{t('marriage')}</option><option value="OTHER">{t('other')}</option></> : <><option value="BIOLOGICAL">{t('biological')}</option><option value="ADOPTIVE">{t('adoptive')}</option><option value="STEP">{t('step')}</option><option value="OTHER">{t('other')}</option></>}
+          {kind === 'partner' ? <><option value="PARTNERSHIP">{t('partnership')}</option><option value="MARRIAGE">{t('marriage')}</option><option value="OTHER">{t('other')}</option></> : <><option value="BIOLOGICAL">{t('biological')}</option><option value="ADOPTIVE">{t('adoptive')}</option></>}
         </select>
       </label>
       {kind === 'partner' && <label className="current-partner-checkbox"><input type="checkbox" checked={isCurrent} onChange={(event) => setCurrent(event.target.checked)} /><span>{t('setAsCurrentPartner')}</span></label>}
-      {kind === 'child' && secondParentOptions.length > 0 && <label className="relationship-type">{t('secondParent')}
+      {allowSecondParent && secondParentOptions.length > 0 && <label className="relationship-type">{t('secondParent')}
         <select value={secondParentId} onChange={(event) => setSecondParentId(event.target.value)}>
           <option value="">{t('noSecondParent')}</option>
           {secondParentOptions.map((person) => <option key={person.id} value={person.id}>{fullName(person)}</option>)}
@@ -112,7 +115,7 @@ export function RelativeDialog({ kind, selectedId, graph, busy, error, onClose, 
           </div>
           {error && <p className="form-error">{error}</p>}
           <footer><button className="primary" disabled={!candidateId || busy} onClick={() => onLink(
-            candidateId, type, secondParentId || undefined,
+            candidateId, type, allowSecondParent ? secondParentId || undefined : undefined,
             kind === 'partner' && type === 'PARTNERSHIP' ? sharedChildIds : undefined,
             kind === 'partner' && type === 'PARTNERSHIP' && sharedChildIds.length ? sharedChildrenSourceId : undefined,
             isCurrent,
