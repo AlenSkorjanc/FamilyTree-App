@@ -27,10 +27,9 @@ jobs:
       - name: Build frontend
         run: npm run build
         working-directory: frontend
-      - name: Dependency audit
-        run: npm audit --audit-level=high
+      - name: Dependency audit (moderate and above block merge)
+        run: npm audit --audit-level=moderate
         working-directory: frontend
-        continue-on-error: true
 
   backend:
     name: Backend PostgreSQL integration tests and build
