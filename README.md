@@ -1,6 +1,6 @@
 # Family Tree
 
-A full-stack family-tree editor built around a graph data model. People are independent nodes; parent/child and partnership records are edges. This supports multiple parents, remarriage, adoption, half-siblings, pedigree collapse, and arbitrarily deep ancestry without recursive persistence objects.
+A full-stack family-tree editor built around a graph data model. People are independent nodes; parent/child and partnership records are edges. This supports up to two biological/adoptive parents per child, remarriage, adoption, half-siblings, pedigree collapse, and arbitrarily deep ancestry without recursive persistence objects.
 
 ## Requirements
 
@@ -73,7 +73,7 @@ The frontend obtains a flat graph in one request, lays it out with ELK, and disp
 - `user_identity`: Google/Facebook identities stored separately from application users.
 - `refresh_token`: hashes of rotating opaque refresh tokens and their session families.
 - `people`: one row per person, keyed to exactly one tree. Only `first_name` is required.
-- `parent_child_relationships`: directed edges with biological, adoptive, step, or other type.
+- `parent_child_relationships`: directed edges; new links support **biological** or **adoptive** types and each child can have **at most two parents total**. Legacy step/other rows are kept readable for safe reconciliation but cannot be created or changed into unsupported types.
 - `partnerships`: logical undirected edges stored in canonical UUID order. `is_current` is symmetric and explicit; each person may participate in at most one current partnership, while existing migrated relationships safely remain non-current.
 
 Deleting a person removes their relationships but never deletes related people. Indexed flat graph data supports arbitrarily deep ancestry without recursive ORM objects or artificial generation limits.
@@ -93,7 +93,7 @@ Deleting a person removes their relationships but never deletes related people. 
 | `PATCH` | `/api/trees/{treeId}/people/{personId}/current-partner` | Select or clear the person's symmetric current partnership |
 | `GET` | `/api/trees/{treeId}/graph` | Fetch people and all edges in one flat response |
 
-Partnerships are explicit and never inferred from shared children. Selecting a current partner transactionally clears conflicting current partnerships for both people; sending a null partner clears the selection without removing historical relationships. Parent-child links are rejected if they cross trees, duplicate an existing edge, self-link, or introduce an ancestry cycle.
+Partnerships are explicit and never inferred from shared children. Selecting a current partner transactionally clears conflicting current partnerships for both people; sending a null partner clears the selection without removing historical relationships. Parent-child links are rejected if they cross trees, duplicate an existing edge, self-link, introduce an ancestry cycle, exceed two parents for a child, or use a new relationship type other than biological/adoptive. The per-tree ancestry lock makes the limit safe across concurrent requests; shared-child copying is transactional, so a rejected child does not partially create a partnership or additional parent links.
 
 ## Authentication, guest trees, and sharing
 
