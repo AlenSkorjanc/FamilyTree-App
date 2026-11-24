@@ -91,6 +91,7 @@ interface ParentChildRelationshipRepository : JpaRepository<ParentChildRelations
     fun findByIdAndTreeId(id: UUID, treeId: UUID): ParentChildRelationship?
     fun findByTreeIdAndParentIdAndChildId(treeId: UUID, parentId: UUID, childId: UUID): ParentChildRelationship?
     fun existsByTreeIdAndParentIdAndChildId(treeId: UUID, parentId: UUID, childId: UUID): Boolean
+    fun countByTreeIdAndChildId(treeId: UUID, childId: UUID): Long
 
     @Query("select r from ParentChildRelationship r where r.treeId = :treeId and (r.parentId = :personId or r.childId = :personId)")
     fun findForPerson(@Param("treeId") treeId: UUID, @Param("personId") personId: UUID): List<ParentChildRelationship>

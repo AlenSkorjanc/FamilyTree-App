@@ -133,19 +133,127 @@ class FamilyTreeIntegrationTests @Autowired constructor(
     }
 
     @Test
-    fun `a child can have more than two parents of any gender and relationship type`() {
-        val tree = trees.create(CreateTreeRequest("Multiple parents"))
-        val firstParent = people.create(tree.id, PersonRequest("First parent"))
-        val secondParent = people.create(tree.id, PersonRequest("Second parent"))
-        val thirdParent = people.create(tree.id, PersonRequest("Third parent"))
+    fun `each child has at most two parents including any biological adoptive combination`() {
+        val cases = listOf(
+            RelationshipType.BIOLOGICAL to RelationshipType.BIOLOGICAL,
+            RelationshipType.ADOPTIVE to RelationshipType.ADOPTIVE,
+            RelationshipType.BIOLOGICAL to RelationshipType.ADOPTIVE,
+        )
+        cases.forEachIndexed { index, (firstType, secondType) ->
+            val tree = trees.create(CreateTreeRequest("Two parents case $index"))
+            val firstParent = people.create(tree.id, PersonRequest("First parent"))
+            val secondParent = people.create(tree.id, PersonRequest("Second parent"))
+            val thirdParent = people.create(tree.id, PersonRequest("Third parent"))
+            val child = people.create(tree.id, PersonRequest("Child"))
+
+            val firstRelationship = relationships.createParentChild(
+                tree.id, ParentChildRequest(firstParent.id, child.id, firstType),
+            )
+            relationships.createParentChild(tree.id, ParentChildRequest(secondParent.id, child.id, secondType))
+
+            assertEquals("MAX_PARENTS_REACHED", assertThrows<BusinessRuleException> {
+                relationships.createParentChild(tree.id, ParentChildRequest(thirdParent.id, child.id, RelationshipType.BIOLOGICAL))
+            }.code)
+            assertEquals("MAX_PARENTS_REACHED", assertThrows<BusinessRuleException> {
+                relationships.createParentChild(tree.id, ParentChildRequest(thirdParent.id, child.id, RelationshipType.ADOPTIVE))
+            }.code)
+            assertEquals(2, relationships.listParentChild(tree.id).count { it.childId == child.id })
+            assertEquals(2, graph.get(tree.id).parentChildRelationships.count { it.childId == child.id })
+
+            val editedType = if (firstType == RelationshipType.BIOLOGICAL) RelationshipType.ADOPTIVE else RelationshipType.BIOLOGICAL
+            val edited = relationships.createParentChild(
+                tree.id, ParentChildRequest(firstParent.id, child.id, editedType),
+            )
+            assertEquals(firstRelationship.id, edited.id)
+            assertEquals(editedType, edited.relationshipType)
+            assertEquals(2, relationships.listParentChild(tree.id).count { it.childId == child.id })
+
+            relationships.deleteParentChild(tree.id, firstRelationship.id)
+            relationships.createParentChild(tree.id, ParentChildRequest(thirdParent.id, child.id))
+            assertEquals(2, relationships.listParentChild(tree.id).count { it.childId == child.id })
+        }
+    }
+
+    @Test
+    fun `step and other parent relationship writes are explicitly rejected`() {
+        val tree = trees.create(CreateTreeRequest("Supported parent types"))
+        val parent = people.create(tree.id, PersonRequest("Parent"))
         val child = people.create(tree.id, PersonRequest("Child"))
+        for (type in listOf(RelationshipType.STEP, RelationshipType.OTHER)) {
+            assertEquals("UNSUPPORTED_PARENT_RELATIONSHIP_TYPE", assertThrows<BusinessRuleException> {
+                relationships.createParentChild(tree.id, ParentChildRequest(parent.id, child.id, type))
+            }.code)
+        }
+        assertTrue(relationships.listParentChild(tree.id).isEmpty())
+    }
 
-        relationships.createParentChild(tree.id, ParentChildRequest(firstParent.id, child.id))
-        relationships.createParentChild(tree.id, ParentChildRequest(secondParent.id, child.id, RelationshipType.ADOPTIVE))
-        relationships.createParentChild(tree.id, ParentChildRequest(thirdParent.id, child.id, RelationshipType.STEP))
+    @Test
+    fun `copying shared children to a new partner is atomic when any child has two parents`() {
+        val tree = trees.create(CreateTreeRequest("Atomic shared children"))
+        val first = people.create(tree.id, PersonRequest("First"))
+        val second = people.create(tree.id, PersonRequest("Second"))
+        val newPartner = people.create(tree.id, PersonRequest("New partner"))
+        val available = people.create(tree.id, PersonRequest("Available child"))
+        val full = people.create(tree.id, PersonRequest("Full child"))
+        relationships.createParentChild(tree.id, ParentChildRequest(first.id, available.id))
+        relationships.createParentChild(tree.id, ParentChildRequest(first.id, full.id))
+        relationships.createParentChild(tree.id, ParentChildRequest(second.id, full.id, RelationshipType.ADOPTIVE))
 
-        assertEquals(3, relationships.listParentChild(tree.id).count { it.childId == child.id })
-        assertEquals(3, graph.get(tree.id).parentChildRelationships.count { it.childId == child.id })
+        assertEquals("MAX_PARENTS_REACHED", assertThrows<BusinessRuleException> {
+            relationships.createPartnership(
+                tree.id,
+                PartnershipRequest(
+                    first.id,
+                    newPartner.id,
+                    copyChildrenFromPersonId = first.id,
+                    sharedChildIds = setOf(available.id, full.id),
+                ),
+            )
+        }.code)
+        assertTrue(relationships.listPartnerships(tree.id).isEmpty())
+        assertEquals(0, relationships.listParentChild(tree.id).count { it.parentId == newPartner.id })
+        assertEquals(1, relationships.listParentChild(tree.id).count { it.childId == available.id })
+        assertEquals(2, relationships.listParentChild(tree.id).count { it.childId == full.id })
+    }
+
+    @Test
+    fun `concurrent attempts for last parent slot allow exactly one relationship`() {
+        val tree = trees.create(CreateTreeRequest("Concurrent last parent slot"))
+        val initial = people.create(tree.id, PersonRequest("Existing parent"))
+        val first = people.create(tree.id, PersonRequest("First candidate"))
+        val second = people.create(tree.id, PersonRequest("Second candidate"))
+        val child = people.create(tree.id, PersonRequest("Child"))
+        relationships.createParentChild(tree.id, ParentChildRequest(initial.id, child.id))
+
+        val authentication = SecurityContextHolder.getContext().authentication
+        val ready = CountDownLatch(2)
+        val start = CountDownLatch(1)
+        val executor = Executors.newFixedThreadPool(2)
+        fun mutation(parentId: java.util.UUID, type: RelationshipType) = Callable {
+            SecurityContextHolder.getContext().authentication = authentication
+            try {
+                ready.countDown()
+                start.await(5, TimeUnit.SECONDS)
+                runCatching { relationships.createParentChild(tree.id, ParentChildRequest(parentId, child.id, type)) }
+            } finally {
+                SecurityContextHolder.clearContext()
+            }
+        }
+
+        try {
+            val results = listOf(
+                executor.submit(mutation(first.id, RelationshipType.BIOLOGICAL)),
+                executor.submit(mutation(second.id, RelationshipType.ADOPTIVE)),
+            )
+            assertTrue(ready.await(5, TimeUnit.SECONDS))
+            start.countDown()
+            val outcomes = results.map { it.get(15, TimeUnit.SECONDS) }
+            assertEquals(1, outcomes.count { it.isSuccess })
+            assertEquals("MAX_PARENTS_REACHED", (outcomes.single { it.isFailure }.exceptionOrNull() as BusinessRuleException).code)
+            assertEquals(2, relationships.listParentChild(tree.id).count { it.childId == child.id })
+        } finally {
+            executor.shutdownNow()
+        }
     }
 
     @Test

@@ -36,7 +36,7 @@
 - Ancestry mutations must serialize on the relevant `FamilyTree`; never use a global application lock or permit concurrent checks to race.
 - Graph traversal is always scoped to one tree. React Flow positions, layout rows, dates, and gender are never authoritative genealogy data.
 - Derive grandparents, siblings, and other extended relations from parent-child edges instead of persisting redundant relationship types.
-- Do not impose a two-parent limit and do not use gender to validate parenthood.
+- A child may have at most two parent-child relationships total, independent of gender. New and edited relationships support BIOLOGICAL and ADOPTIVE only; legacy STEP/OTHER records remain readable until explicitly reconciled. Enforce the cap transactionally in the backend under the per-tree ancestry lock; client-side limits are advisory.
 - Keep social/legal partnership policy separate from ancestry DAG integrity; unusual partnerships must not corrupt or redefine ancestry.
 - Future person merges and bulk/GEDCOM imports must validate the complete proposed graph and preserve DAG integrity transactionally.
 

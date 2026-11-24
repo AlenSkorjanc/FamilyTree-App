@@ -99,6 +99,8 @@ export default function App({ publicShareId }: { publicShareId?: UUID }) {
     } catch (caught) {
       const integrityMessages: Record<string, string> = {
         ANCESTRY_CYCLE: t('ancestryCycleError'),
+        MAX_PARENTS_REACHED: t('maxParentsError'),
+        UNSUPPORTED_PARENT_RELATIONSHIP_TYPE: t('unsupportedParentTypeError'),
         SELF_PARENT_RELATIONSHIP: t('selfParentError'),
         DUPLICATE_PARENT_CHILD_RELATIONSHIP: t('duplicateParentChildError'),
         INVALID_BIOLOGICAL_PARENT_DATES: t('biologicalParentDatesError'),
