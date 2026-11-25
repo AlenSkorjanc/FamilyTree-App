@@ -322,10 +322,10 @@ button:disabled { opacity: .55; cursor: default; }
 .candidate-check .app-icon { width: 18px; height: 18px; }
 .candidate-card.selected .candidate-check { opacity: 1; }
 .candidate-list p { padding: 8px 13px; color: #87928c; }
-.welcome { min-height: 100vh; padding: 28px; background: radial-gradient(circle at 50% 40%, #fff 0, #f5f6f1 55%, #eaf0ea 100%); }
+.welcome { min-height: 100vh; min-height: 100dvh; display: grid; grid-template-rows: auto minmax(max-content, 1fr); padding: 28px; background: radial-gradient(circle at 50% 40%, #fff 0, #f5f6f1 55%, #eaf0ea 100%); }
 .welcome-header { display: flex; align-items: center; justify-content: space-between; }
 .welcome-actions { display: flex; align-items: center; gap: 10px; }
-.welcome section { min-height: calc(100vh - 80px); display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; }
+.welcome section { min-height: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; }
 .welcome h1 { font-size: 46px; font-weight: 600; line-height: 1.1; margin: 18px 0 6px; color: #294737; }
 .welcome p { color: #718078; }
 .welcome form { display: flex; gap: 9px; margin-top: 20px; }
