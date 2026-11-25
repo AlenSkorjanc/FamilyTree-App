@@ -146,10 +146,14 @@ try {
     }))
     assert.ok(shortScreen.scrollHeight > shortScreen.clientHeight,
       'Short mobile screens must be scrollable when the welcome content does not fit: ' + JSON.stringify(shortScreen))
-    await mp.locator('.welcome form').scrollIntoViewIfNeeded()
+    await mp.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight))
+    await mp.waitForFunction(() => window.scrollY > 0)
     const formBounds = await mp.locator('.welcome form').boundingBox()
-    assert.ok(formBounds && formBounds.y >= -1 && formBounds.y + formBounds.height <= 380,
-      'Welcome form must remain reachable on short mobile screens: ' + JSON.stringify(formBounds))
+    const bottomActions = await mp.locator('.welcome-actions').boundingBox()
+    assert.ok(formBounds && bottomActions && formBounds.y >= -1 &&
+        formBounds.y + formBounds.height <= bottomActions.y + 1,
+      'Welcome form must remain reachable above the fixed bottom actions on short mobile screens: ' +
+        JSON.stringify({formBounds,bottomActions}))
     await mp.setViewportSize({width:390,height:844})
     await mp.getByPlaceholder('Tree name, e.g. The Novak Family').fill('QA mobile tree')
     await mp.getByRole('button',{name:'Create family tree'}).click()
