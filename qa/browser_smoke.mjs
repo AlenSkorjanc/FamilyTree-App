@@ -32,6 +32,22 @@ try {
     await page.getByRole('heading', {name: 'Start your family story'}).waitFor({timeout:15000})
     assert.equal(await page.title(), 'Family Tree')
   })
+  await run('Welcome uses one desktop viewport without vertical scroll', async () => {
+    for (const viewport of [{width:1366,height:900},{width:1200,height:700}]) {
+      await page.setViewportSize(viewport)
+      const dimensions = await page.evaluate(() => ({
+        scrollHeight: document.documentElement.scrollHeight,
+        clientHeight: document.documentElement.clientHeight,
+        innerHeight: window.innerHeight,
+        welcomeHeight: document.querySelector('.welcome')?.getBoundingClientRect().height,
+      }))
+      assert.ok(dimensions.scrollHeight <= dimensions.clientHeight + 1,
+        'Unexpected welcome-page scroll at ' + viewport.width + 'x' + viewport.height + ': ' + JSON.stringify(dimensions))
+      assert.ok(Math.abs(dimensions.welcomeHeight - dimensions.innerHeight) <= 1,
+        'Welcome should fill desktop viewport: ' + JSON.stringify(dimensions))
+    }
+    await page.setViewportSize({width:1366,height:900})
+  })
   await run('Guest tree creation through actual UI', async () => {
     await page.getByPlaceholder('Tree name, e.g. The Novak Family').fill('QA browser regression')
     await page.getByRole('button', {name:'Create family tree'}).click()
@@ -116,6 +132,25 @@ try {
     await mp.getByRole('heading',{name:'Start your family story'}).waitFor({timeout:15000})
     const overflow = await mp.evaluate(() => document.documentElement.scrollWidth - innerWidth)
     assert.ok(overflow <= 8, 'Horizontal overflow: ' + overflow)
+    const heightMetrics = await mp.evaluate(() => ({
+      scrollHeight: document.documentElement.scrollHeight,
+      clientHeight: document.documentElement.clientHeight,
+      viewportHeight: window.innerHeight,
+    }))
+    assert.ok(heightMetrics.scrollHeight <= heightMetrics.clientHeight + 1,
+      'Welcome should not scroll when it fits the mobile viewport: ' + JSON.stringify(heightMetrics))
+    await mp.setViewportSize({width:320,height:380})
+    const shortScreen = await mp.evaluate(() => ({
+      scrollHeight: document.documentElement.scrollHeight,
+      clientHeight: document.documentElement.clientHeight,
+    }))
+    assert.ok(shortScreen.scrollHeight > shortScreen.clientHeight,
+      'Short mobile screens must be scrollable when the welcome content does not fit: ' + JSON.stringify(shortScreen))
+    await mp.locator('.welcome form').scrollIntoViewIfNeeded()
+    const formBounds = await mp.locator('.welcome form').boundingBox()
+    assert.ok(formBounds && formBounds.y >= -1 && formBounds.y + formBounds.height <= 380,
+      'Welcome form must remain reachable on short mobile screens: ' + JSON.stringify(formBounds))
+    await mp.setViewportSize({width:390,height:844})
     await mp.getByPlaceholder('Tree name, e.g. The Novak Family').fill('QA mobile tree')
     await mp.getByRole('button',{name:'Create family tree'}).click()
     try { await mp.waitForFunction(() => /^\/trees\/[0-9a-f-]{36}$/.test(location.pathname), null, {timeout:15000}) } catch(error) { console.log('CREATE_TREE_MOBILE_DIAGNOSTIC', JSON.stringify({url:mp.url(),body:(await mp.locator('body').innerText()).slice(0,1200)})); throw error }
